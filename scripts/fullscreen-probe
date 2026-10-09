@@ -1,0 +1,9 @@
+#!/bin/bash
+# Prints what the window server reports about full-screen Spaces, Split View and native tiling.
+# Links the private SkyLight framework. Pass `--menu <App>` to also dump that app's Window menu.
+set -euo pipefail
+cd "$(dirname "$0")"
+out=$(mktemp -d)
+swiftc -F/System/Library/PrivateFrameworks -framework SkyLight fullscreen-probe.swift -o "$out/fullscreen-probe" 2>/dev/null
+"$out/fullscreen-probe" "$@"
+/bin/rm -rf "$out"

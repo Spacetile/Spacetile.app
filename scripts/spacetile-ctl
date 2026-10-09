@@ -1,0 +1,15 @@
+#!/usr/bin/env swift
+// Sends a command to the running Spacetile, e.g. `spacetile-ctl focus west`.
+// With `frames`, prints the on-screen windows of the current Space instead.
+import AppKit
+
+let args = CommandLine.arguments.dropFirst().joined(separator: " ")
+if args == "frames" {
+    let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    for w in info where (w[kCGWindowLayer as String] as? Int) == 0 {
+        let b = w[kCGWindowBounds as String] as? [String: CGFloat] ?? [:]
+        print(w[kCGWindowNumber as String] ?? 0, w[kCGWindowOwnerName as String] ?? "?", b["X"] ?? 0, b["Y"] ?? 0, b["Width"] ?? 0, b["Height"] ?? 0, separator: "\t")
+    }
+} else {
+    DistributedNotificationCenter.default().postNotificationName(.init("com.kodehort.spacetile.command"), object: args, deliverImmediately: true)
+}

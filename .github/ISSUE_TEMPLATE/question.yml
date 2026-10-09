@@ -1,0 +1,11 @@
+name: Question
+description: Ask how Spacetile works or how to set something up.
+labels: [question]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Check the docs at https://spacetile.app/docs/ first.
+    validations:
+      required: true
