@@ -1,0 +1,29 @@
+{
+  "publicKey": "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+  "keys": [
+    {
+      "name": "twelve months",
+      "id": "lic_0123456789abcdef01234567",
+      "email": "ada@example.com",
+      "windowEnd": "2027-10-10",
+      "issued": "2026-10-10",
+      "key": "eyJmb3JtYXQiOjEsImlkIjoibGljXzAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2NyIsImVtYWlsIjoiYWRhQGV4YW1wbGUuY29tIiwid2luZG93RW5kIjoiMjAyNy0xMC0xMCIsImlzc3VlZCI6IjIwMjYtMTAtMTAifQ.UTECsftdYJCtV6MeA-W-TZ8DwIycBCKDRjTDxj1yW_EvbrReBSpngvETaJVYvf7_MKYa0vzBPc6LZeg-S0l9AA"
+    },
+    {
+      "name": "lifetime",
+      "id": "lic_89abcdef0123456789abcdef",
+      "email": "grace@example.com",
+      "windowEnd": "9999-12-31",
+      "issued": "2026-10-10",
+      "key": "eyJmb3JtYXQiOjEsImlkIjoibGljXzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsImVtYWlsIjoiZ3JhY2VAZXhhbXBsZS5jb20iLCJ3aW5kb3dFbmQiOiI5OTk5LTEyLTMxIiwiaXNzdWVkIjoiMjAyNi0xMC0xMCJ9.DEcHFdyjwRp_2-wP0xL-5SCia-yQClRTuOWGYiESIdAd-eaRs0-oqbc2sYgY83De4MF3sD_omRZZz9dMU5UJDw"
+    },
+    {
+      "name": "non-ASCII email",
+      "id": "lic_fedcba9876543210fedcba98",
+      "email": "zoë@exämple.com",
+      "windowEnd": "2027-02-28",
+      "issued": "2026-02-28",
+      "key": "eyJmb3JtYXQiOjEsImlkIjoibGljX2ZlZGNiYTk4NzY1NDMyMTBmZWRjYmE5OCIsImVtYWlsIjoiem_Dq0BleMOkbXBsZS5jb20iLCJ3aW5kb3dFbmQiOiIyMDI3LTAyLTI4IiwiaXNzdWVkIjoiMjAyNi0wMi0yOCJ9.CGPU5Yp2KMccfmirkyetzlUXUSZwLur4i5JWHskCiHKuEkUJI6KD3S8HgtWmZvIGnElw0xSiGk__anGmb5RSDQ"
+    }
+  ]
+}

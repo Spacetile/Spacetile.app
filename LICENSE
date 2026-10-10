@@ -1,0 +1,142 @@
+Spacetile Source Licence, version 1.0
+
+Copyright (c) 2026 Kodehort Ltd. All rights reserved.
+
+Spacetile is source-available software. Its source is public so that anyone
+can read and audit it, and using Spacetile needs a Licence.
+
+
+1. Definitions
+
+"Kodehort", "we" and "us" mean Kodehort Ltd, a company registered in England
+and Wales.
+
+"You" means the person or organisation exercising rights under this licence.
+
+"Software" means the source code, documentation and other files in this
+repository, any modified version of them, and any build made from either.
+
+"Licence" means a licence to use Spacetile that you bought from Kodehort or
+that Kodehort granted to you, used under the Spacetile End User Licence
+Agreement at https://spacetile.app/eula/ (the "EULA").
+
+"Licence key" means the token that proves a Licence to the app.
+
+"Trial" means the period the EULA allows Spacetile to be used without a
+Licence.
+
+"Licence check" means the code in the Software that tracks the Trial,
+verifies Licence keys and stops features when neither applies.
+
+"Development build" means a build of the Software made with
+`scripts/bundle.sh --dev`, which leaves the Licence check out.
+
+
+2. What you may do without a Licence
+
+Kodehort grants you a personal, worldwide, non-exclusive, non-transferable,
+royalty-free licence, which ends as section 7 describes, to:
+
+  (a) read and audit the Software;
+
+  (b) make Development builds and run them on Macs you control, only to study
+      how the Software works, check its behaviour or security, or investigate
+      and report a problem with it; and
+
+  (c) modify the Software for the purposes in (b).
+
+
+3. Every other use needs a Licence
+
+Any other use of the Software is allowed only under the EULA, which needs a
+Licence once the Trial it offers has ended. That includes running a
+Development build for everyday work and running any build other than a
+Development build.
+
+
+4. Restrictions
+
+You may not:
+
+  (a) copy, publish, distribute, sublicense, sell, rent or lend the Software,
+      a modified version of it or any build of it, or otherwise make any of
+      them available to anyone else, except as section 5 allows;
+
+  (b) remove, disable, bypass or otherwise circumvent the Licence check, or
+      change the Software so that it does any of these, other than by making
+      a Development build under section 2(b);
+
+  (c) make, publish or distribute anything that does what (b) forbids,
+      including patches, modified builds and Licence key generators;
+
+  (d) create Licence keys, or use or share a Licence key that Kodehort did
+      not issue to you; or
+
+  (e) remove or change any copyright, licence or other notice in the
+      Software.
+
+
+5. Forks on GitHub
+
+GitHub's Terms of Service let GitHub users view and fork public repositories
+on GitHub. Nothing in this licence restricts that. A fork stays under this
+licence, and section 4 applies to everything you do with it, both on GitHub
+and elsewhere.
+
+
+6. Ownership and modifications
+
+Kodehort and its licensors keep all right, title and interest in the
+Software. This licence grants no rights beyond those it states, and no rights
+in Kodehort's names, logos or trade marks.
+
+You may use your modifications to the Software only as this licence allows
+for the Software itself.
+
+Kodehort does not accept contributions to the Software at present.
+
+
+7. Ending this licence
+
+This licence ends automatically if you break any of its terms. When it ends
+you must stop using the Software under it and delete every copy and build you
+made under it. Sections 4, 6, 8, 9 and 10 continue after it ends.
+
+
+8. No warranty
+
+The Software is provided "as is", without warranty of any kind, express or
+implied, including the implied warranties of satisfactory quality, fitness
+for a particular purpose and non-infringement.
+
+
+9. Limitation of liability
+
+To the extent the law allows, Kodehort is not liable to you for any loss or
+damage arising from this licence or from your use of the Software under it,
+whether in contract, tort (including negligence) or otherwise.
+
+Nothing in this licence limits or excludes liability for death or personal
+injury caused by negligence, for fraud or fraudulent misrepresentation, or
+for anything else that the law does not allow to be limited or excluded.
+
+
+10. Law and jurisdiction
+
+This licence is governed by the law of England and Wales. The courts of
+England and Wales have exclusive jurisdiction over any dispute arising from
+it.
+
+
+11. Third-party code
+
+Files that carry their own licence notice are covered by that notice instead
+of this licence. Sources/CSkyLight/LICENSE-WhichSpace covers code adapted
+from WhichSpace, under the MIT licence. Packages the Software depends on,
+such as Sparkle, are covered by their own licences.
+
+
+12. New versions
+
+Kodehort may publish new versions of this licence. Each copy of the Software
+is covered by the version of this licence that came with it.

@@ -17,7 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindow?
     private var miniMap: MiniMap?
     private var spacesWindow: SpacesWindow?
-    private let updates = Updates()
+    /// Read, and the Trial started, as Spacetile launches
+    private let licence = Licence()
+    private lazy var updates = Updates(licence: licence)
     private var status = WindowManager.Status()
     private lazy var welcome = Welcome(settings: { [config] in config.settings }, saveKeys: { [config] keys in
         var settings = config.settings
@@ -37,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.target = self
         statusItem.button?.action = #selector(statusItemClicked)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        licence.onChange = { [weak self] _ in self?.applyLicence() }
+        recheckLicence()
         manager.onStatusChange = { [weak self] status in
             guard let self else { return }
             self.status = status
@@ -84,6 +88,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_: NSApplication, hasVisibleWindows _: Bool) -> Bool {
         openSettings()
         return false
+    }
+
+    /// `spacetile://activate?key=…`, the link in Licence emails: stores the key, as pasting it into
+    /// Settings → Licence does, and says how that went.
+    func application(_: NSApplication, open urls: [URL]) {
+        for key in urls.compactMap(ActivationLink.key(in:)) { activate(key) }
+    }
+
+    private func activate(_ key: String) {
+        let alert = NSAlert()
+        if let problem = licence.enter(key) {
+            alert.alertStyle = .warning
+            alert.messageText = "Spacetile couldn't use this Licence key"
+            alert.informativeText = problem
+        } else {
+            alert.messageText = "Spacetile is licensed"
+            alert.informativeText = licence.state.licence.map {
+                "Licensed to \($0.email). Update window ends: \(Licence.day($0.updateWindowEnd))."
+            } ?? ""
+        }
+        NSApp.activate()
+        alert.runModal()
     }
 
     private static func symbol(_ name: String, _ description: String) -> NSImage? {
@@ -155,6 +181,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         log.notice("accessibility trusted, starting")
+        #if !SPACETILE_DEV
+        // Before start, so a stopped install doesn't lay out its windows first
+        manager.licenceNeeded = licence.licenceNeeded
+        #endif
         manager.start()
         mouse = Mouse(manager: manager)
         mouse?.onDisabled = { [weak self] in self?.checkAccessibility() }
@@ -173,10 +203,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.updateTitle()
             self.settingsWindow?.configChanged()
         }
-        miniMap = MiniMap(manager: manager,
+        miniMap = MiniMap(manager: manager, licence: licence,
                           captureLayout: { [weak self] in self?.captureLayout() },
                           editProfiles: { [weak self] in self?.openProfiles() },
                           openSettings: { [weak self] in self?.openSettings() },
+                          openLicence: { [weak self] in self?.settingsWindow?.show(pane: "Licence") },
                           showWelcome: { [weak self] in self?.welcome.show() },
                           openSpaces: { [weak self] in self?.openSpaces() },
                           checkForUpdates: { [weak self] in self?.checkForUpdates() })
@@ -184,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WindowPreviews.shared.enabled = config.settings.showsWindowPreviews
         FocusFilterRouter.handler = { [manager] in manager.perform(.load($0)) }
         settingsWindow = hotkeys.map {
-            SettingsWindow(config: config, hotkeys: $0, manager: manager,
+            SettingsWindow(config: config, hotkeys: $0, manager: manager, licence: licence,
                            showWelcome: { [weak self] in self?.welcome.show() },
                            checkForUpdates: { [weak self] in self?.checkForUpdates() })
         }
@@ -218,6 +249,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard checkAccessibility() else { return }
         manager.perform(command)
+    }
+
+    /// Stops or restarts tiling and profiles to match the Trial and Licence key. The mini-map and
+    /// Settings read the Licence themselves.
+    private func applyLicence() {
+        #if !SPACETILE_DEV
+        let effect = licence.whyStopped.map { "\($0), tiling and profiles stopped" } ?? "tiling and profiles run"
+        log.notice("licence: \(effect, privacy: .public)")
+        manager.licenceNeeded = licence.licenceNeeded
+        #endif
+        updateTitle()
+    }
+
+    /// The Trial can run out while Spacetile is open.
+    private func recheckLicence() {
+        licence.refresh()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3600) { self.recheckLicence() }
     }
 
     /// Checked every second, and whenever Spacetile is about to act (a command, a click on the
@@ -317,11 +365,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Draws the menu-bar item from the Menu Bar settings; a ⚠︎ leads when config.json has an error.
     private func updateTitle() {
-        let image = MenuBarRenderer.image(for: status, settings: config.settings.menuBarSettings, warning: config.error != nil || accessibilityLost)
+        let image = MenuBarRenderer.image(for: status, settings: config.settings.menuBarSettings,
+                                          warning: config.error != nil || accessibilityLost || licence.licenceNeeded)
         statusItem.button?.image = image
         statusItem.button?.title = image == nil ? (status.space.map(String.init) ?? "·") : ""
         // The image says nothing to VoiceOver, so name what it shows
-        let parts = ["Spacetile", accessibilityLost ? "needs Accessibility permission" : nil, status.paused ? "paused" : nil,
+        let parts = ["Spacetile", accessibilityLost ? "needs Accessibility permission" : nil,
+                     licence.whyStopped.map { "\($0), tiling stopped" } ?? (status.paused ? "paused" : nil),
                      status.space.map { "Space \($0)" }, status.label, status.profile.map { "profile \($0)" },
                      config.error.map { _ in "config.json has an error" }]
         statusItem.button?.setAccessibilityLabel(parts.compactMap { $0 }.joined(separator: ", "))

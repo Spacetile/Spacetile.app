@@ -1,4 +1,6 @@
+import AppKit
 import Sparkle
+import SpacetileCore
 import SwiftUI
 
 /// The stream of releases this install follows. Kept in UserDefaults, as it belongs to the install
@@ -25,9 +27,24 @@ enum Channel: String, CaseIterable, Identifiable {
 
 /// Sparkle 2, checking the appcast in Info.plist's SUFeedURL (set by scripts/bundle.sh) for the
 /// Channel picked in Settings. The rest of the app only sees `check`, so Sparkle stays in this file.
+///
+/// Each release is judged by the Licence (`Licence.offer`, `Licence.mayTake`) on its appcast
+/// publish date, the same way on every Channel. One the install may not take never reaches
+/// Sparkle's install window: the check ends quietly and Spacetile shows it marked "Renew to
+/// install", with a Renew button in place of Install.
 final class Updates: NSObject, SPUUpdaterDelegate {
+    private static let renewShownKey = "renewToInstallShown"
+
+    private let licence: Licence
     // Lazy, as it needs self as its delegate, which Sparkle holds weakly.
     private lazy var controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
+    /// The release the current check found but this install may not take, shown when the check ends.
+    private var renewToInstall: SUAppcastItem?
+
+    init(licence: Licence) {
+        self.licence = licence
+        super.init()
+    }
 
     /// Starts the scheduled checks. A bare `swift run` binary has no Info.plist and so no feed; Sparkle
     /// would alert that it can't start, so it stays off there.
@@ -44,6 +61,75 @@ final class Updates: NSObject, SPUUpdaterDelegate {
 
     /// Read on every check, so a new Channel applies from the next one.
     func allowedChannels(for updater: SPUUpdater) -> Set<String> { Channel.current.appcastChannels }
+
+    /// The newest release the Licence covers, so an older release inside the update window still
+    /// installs when a newer one is outside it. When it covers none, the newest, which
+    /// `shouldProceedWithUpdate` then turns into "Renew to install". Sparkle has already dropped
+    /// the items for other Channels and other macOS versions.
+    func bestValidUpdate(in appcast: SUAppcast, for updater: SPUUpdater) -> SUAppcastItem? {
+        let versions = SUStandardVersionComparator.default
+        let running = updater.hostBundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+        let newer = appcast.items
+            .filter { versions.compareVersion(running, toVersion: $0.versionString) == .orderedAscending }
+            .sorted { versions.compareVersion($0.versionString, toVersion: $1.versionString) == .orderedDescending }
+        switch licence.offer(newer, published: { $0.date }) {
+        case .install(let item)?, .renewToInstall(let item)?: return item
+        // Nothing newer: Sparkle reports that it's up to date
+        case nil: return nil
+        }
+    }
+
+    /// Stops a release the Licence doesn't cover before Sparkle offers to install it. Sparkle ends
+    /// the check without an alert of its own for SUInstallationCanceledError
+    /// (SPUUIBasedUpdateDriver.m, `_abortUpdateWithError:showErrorToUser:`); the release is shown
+    /// when the check ends.
+    func updater(_ updater: SPUUpdater, shouldProceedWithUpdate updateItem: SUAppcastItem, updateCheck: SPUUpdateCheck) throws {
+        guard !licence.mayTake(releaseDated: updateItem.date) else { return }
+        renewToInstall = updateItem
+        throw NSError(domain: SUSparkleErrorDomain, code: Int(SUError.installationCanceledError.rawValue), userInfo: [
+            NSLocalizedDescriptionKey: "Spacetile \(updateItem.displayVersionString) needs a Renewal to install.",
+        ])
+    }
+
+    /// Shows the release `shouldProceedWithUpdate` held back: every time for a check the user asked
+    /// for, once per release for scheduled checks, so a background check doesn't nag daily.
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: (any Error)?) {
+        guard let item = renewToInstall else { return }
+        renewToInstall = nil
+        let defaults = UserDefaults.standard
+        switch updateCheck {
+        case .updates: break
+        case .updatesInBackground:
+            guard defaults.string(forKey: Self.renewShownKey) != item.versionString else { return }
+        case .updateInformation: return
+        @unknown default: return
+        }
+        defaults.set(item.versionString, forKey: Self.renewShownKey)
+        showRenewToInstall(item)
+    }
+
+    /// "Renew to install": Renew opens the Renewal checkout. Without a Licence to renew (the Trial
+    /// over, or a revoked key) it offers to buy one instead.
+    private func showRenewToInstall(_ item: SUAppcastItem) {
+        // A lifetime Licence takes every release, so it never gets here
+        guard let checkout = licence.checkout else { return }
+        let alert = NSAlert()
+        alert.messageText = "Spacetile \(item.displayVersionString) is available: Renew to install"
+        let released = item.date.map { " came out on \(Licence.day($0)), and" } ?? ""
+        switch checkout {
+        case .renew:
+            let windowEnd = licence.state.licence.map { ", which ended on \(Licence.day($0.updateWindowEnd))" } ?? ""
+            alert.informativeText = "This release\(released) is outside your Licence's update window\(windowEnd). Renew your Licence to install it. The version you have keeps working."
+            alert.addButton(withTitle: "Renew Licence…")
+        case .buy:
+            alert.informativeText = "This release\(released) needs a Licence to install."
+            alert.addButton(withTitle: "Buy a Licence…")
+        }
+        alert.addButton(withTitle: "Not Now")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        licence.openCheckout()
+    }
 }
 
 /// Settings → General: the Channel, the running version, so bug reports can name both, and a check on

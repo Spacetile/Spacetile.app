@@ -19,6 +19,7 @@ final class SettingsWindow {
         ("Rules", "Rules", "list.bullet.rectangle", CGSize(width: 640, height: 600)),
         ("Spaces", "Spaces", "rectangle.3.group", CGSize(width: 620, height: 480)),
         ("MenuBar", "Menu Bar", "menubar.rectangle", CGSize(width: 620, height: 640)),
+        ("Licence", "Licence", "key", CGSize(width: 620, height: 440)),
         ("Setup", "Permissions & macOS", "checkmark.shield", CGSize(width: 620, height: 560)),
     ]
 
@@ -76,13 +77,15 @@ final class SettingsWindow {
         case "Spaces": SpacesTab(model: model)
         case "MenuBar": MenuBarTab(model: model)
         case "Setup": SetupTab(model: model)
+        case "Licence": if let licence = model.licence { LicenceTab(licence: licence) }
         default: GeneralTab(model: model)
         }
     }
 
-    init(config: ConfigStore, hotkeys: Hotkeys, manager: WindowManager, showWelcome: @escaping () -> Void,
+    init(config: ConfigStore, hotkeys: Hotkeys, manager: WindowManager, licence: Licence, showWelcome: @escaping () -> Void,
          checkForUpdates: @escaping () -> Void) {
         model = SettingsModel(config: config, hotkeys: hotkeys, manager: manager)
+        model.licence = licence
         model.showWelcome = showWelcome
         model.checkForUpdates = checkForUpdates
         model.showProfiles = { [weak self] in self?.showProfiles() }
@@ -237,6 +240,8 @@ enum DockPresence {
     var showWelcome: () -> Void = {}
     var showProfiles: () -> Void = {}
     var checkForUpdates: () -> Void = {}
+    /// The Trial and Licence key, for the Licence pane.
+    var licence: Licence?
     /// Lets the window update what SwiftUI doesn't draw, like the checks pane's toolbar label.
     var didRefresh: () -> Void = {}
 
@@ -290,6 +295,8 @@ enum DockPresence {
     }
 
     func refresh() {
+        // The Trial's days left, as of now
+        licence?.refresh()
         settings = config.settings
         error = config.error
         registrations = Dictionary(hotkeys.registrations.map { ($0.chord, $0) }, uniquingKeysWith: { a, _ in a })

@@ -1,13 +1,17 @@
 #!/bin/bash
 # Builds build/Spacetile.app and signs it.
-# Usage: bundle.sh [--dev | --release <version>]
-# `--dev` also compiles in the development aids that `spacetile-ctl` can send (see
-# https://spacetile.app/docs/setup/#developer-commands).
+# Usage: bundle.sh [--dev | --release <version> --revocations <file>]
+# `--dev` compiles out the Trial and Licence check, and compiles in the development aids that
+# `spacetile-ctl` can send (see https://spacetile.app/docs/setup/#developer-commands). Every other
+# build, the default one included, has the check, except releases numbered below 1.0.0 (the free
+# public beta; SpacetileCore's LicenceGate).
 # By default signs with the first "Apple Development" identity so the Accessibility grant survives
 # rebuilds (TCC then checks the certificate, not the binary hash). Falls back to ad-hoc with a warning.
 # `--release` stamps the version and today's UTC release date (SpacetileReleaseDate, which the licence
 # check compares with a key's update window), then signs with the first "Developer ID Application"
 # identity, hardened runtime and a secure timestamp, ready for notarization. No fallback.
+# `--revocations` embeds the licence service's list of revoked Licence IDs, which the release pipeline
+# fetches, as Contents/Resources/Revocations.json, so the build refuses those keys. Releases need it.
 # Every build embeds Sparkle and its feed; only release builds check for updates on their own, so a
 # self-built copy isn't swapped for a download that lacks its Accessibility grant.
 set -euo pipefail
@@ -15,16 +19,27 @@ cd "$(dirname "$0")/.."
 FLAGS=()
 VERSION=0.1.0
 RELEASE=false
+REVOCATIONS=
 while (($#)); do
   case $1 in
     --dev) FLAGS=(-Xswiftc -DSPACETILE_DEV) ;;
     --release) RELEASE=true VERSION=${2:?--release needs a version}; shift ;;
-    *) echo "usage: bundle.sh [--dev | --release <version>]" >&2; exit 2 ;;
+    # Relative to where it was run from, before the cd above
+    --revocations) REVOCATIONS=${2:?--revocations needs a file}; [[ $REVOCATIONS == /* ]] || REVOCATIONS=$OLDPWD/$REVOCATIONS; shift ;;
+    *) echo "usage: bundle.sh [--dev | --release <version> --revocations <file>]" >&2; exit 2 ;;
   esac
   shift
 done
 if $RELEASE && ((${#FLAGS[@]})); then
   echo "error: --dev and --release can't be combined" >&2
+  exit 2
+fi
+if $RELEASE && [[ -z $REVOCATIONS ]]; then
+  echo "error: a release needs --revocations, so it refuses revoked Licences" >&2
+  exit 2
+fi
+if [[ -n $REVOCATIONS && ! -s $REVOCATIONS ]]; then
+  echo "error: no revocation list at $REVOCATIONS" >&2
   exit 2
 fi
 swift build -c release --product Spacetile ${FLAGS[@]+"${FLAGS[@]}"}
@@ -53,6 +68,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>LSUIElement</key><true/>
 <key>LSMultipleInstancesProhibited</key><true/>
 <key>LSMinimumSystemVersion</key><string>26.0</string>
+<key>CFBundleURLTypes</key><array><dict>
+  <key>CFBundleURLName</key><string>com.kodehort.spacetile.activate</string>
+  <key>CFBundleURLSchemes</key><array><string>spacetile</string></array>
+</dict></array>
 <key>SUFeedURL</key><string>https://updates.spacetile.app/appcast.xml</string>
 <key>SUPublicEDKey</key><string>HAb+9WQjPD1JH3e6OoxSiAr5PXHSfB1PBa8vhWE/H3U=</string>
 <key>SUEnableAutomaticChecks</key><$RELEASE/>
@@ -65,6 +84,8 @@ mkdir -p "$APP/Contents/Resources"
 xcrun actool Resources/AppIcon.icon --compile "$APP/Contents/Resources" --platform macosx \
   --minimum-deployment-target 26.0 --app-icon AppIcon \
   --output-partial-info-plist "$(mktemp -d)/icon.plist" >/dev/null
+# Licence.swift reads it; a build without it refuses no Licence
+[[ -z $REVOCATIONS ]] || cp "$REVOCATIONS" "$APP/Contents/Resources/Revocations.json"
 
 # App Intents metadata (the Focus filter). Xcode normally generates this; SwiftPM leaves the
 # compiler's constant-value files behind, so run Apple's processor on them here.

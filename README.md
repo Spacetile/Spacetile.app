@@ -6,7 +6,9 @@ Get it and read the docs at [spacetile.app](https://spacetile.app/docs/).
 
 ## Source-available
 
-This repository holds the app's source so you can read and audit it. Spacetile is source-available, not open source. The source licence sets out what you may do with it; it will sit at the root of this repository.
+This repository holds the app's source so you can read and audit it. Spacetile is source-available. The [Source licence](LICENSE) lets anyone read the code and build it with `--dev` to audit it or investigate a problem; any other use needs a Licence from [spacetile.app](https://spacetile.app). It forbids redistributing the source or builds anywhere but through GitHub forks, and circumventing the licence check.
+
+Code adapted from WhichSpace keeps its MIT licence, in [`Sources/CSkyLight/LICENSE-WhichSpace`](Sources/CSkyLight/LICENSE-WhichSpace).
 
 ## Build for auditing
 

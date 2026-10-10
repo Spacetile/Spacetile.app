@@ -14,11 +14,11 @@ final class MiniMap {
     private let outsideClicks = OutsideClicks()
     private var activation: NSObjectProtocol?
 
-    init(manager: WindowManager, captureLayout: @escaping () -> Void, editProfiles: @escaping () -> Void,
-         openSettings: @escaping () -> Void, showWelcome: @escaping () -> Void, openSpaces: @escaping () -> Void,
+    init(manager: WindowManager, licence: Licence, captureLayout: @escaping () -> Void, editProfiles: @escaping () -> Void,
+         openSettings: @escaping () -> Void, openLicence: @escaping () -> Void, showWelcome: @escaping () -> Void, openSpaces: @escaping () -> Void,
          checkForUpdates: @escaping () -> Void) {
-        model = MiniMapModel(manager: manager, captureLayout: captureLayout, editProfiles: editProfiles,
-                             openSettings: openSettings, showWelcome: showWelcome, openSpaces: openSpaces,
+        model = MiniMapModel(manager: manager, licence: licence, captureLayout: captureLayout, editProfiles: editProfiles,
+                             openSettings: openSettings, openLicence: openLicence, showWelcome: showWelcome, openSpaces: openSpaces,
                              checkForUpdates: checkForUpdates)
         hosting = NSHostingView(rootView: MiniMapView(model: model) {})
         hosting.rootView = MiniMapView(model: model) { [weak self] in self?.close() }
@@ -87,20 +87,25 @@ final class MiniMap {
     var profiles: [Profile] = []
     var profileProblems: [ProfileStore.Problem] = []
     let manager: WindowManager
+    /// The Trial and Licence key: while `licence.licenceNeeded`, tiling and profiles are stopped.
+    let licence: Licence
     let captureLayout: () -> Void
     let editProfiles: () -> Void
     let openSettings: () -> Void
+    let openLicence: () -> Void
     let showWelcome: () -> Void
     let openSpaces: () -> Void
     let checkForUpdates: () -> Void
 
-    init(manager: WindowManager, captureLayout: @escaping () -> Void, editProfiles: @escaping () -> Void,
-         openSettings: @escaping () -> Void, showWelcome: @escaping () -> Void, openSpaces: @escaping () -> Void,
-         checkForUpdates: @escaping () -> Void) {
+    init(manager: WindowManager, licence: Licence, captureLayout: @escaping () -> Void, editProfiles: @escaping () -> Void,
+         openSettings: @escaping () -> Void, openLicence: @escaping () -> Void, showWelcome: @escaping () -> Void,
+         openSpaces: @escaping () -> Void, checkForUpdates: @escaping () -> Void) {
         self.manager = manager
+        self.licence = licence
         self.captureLayout = captureLayout
         self.editProfiles = editProfiles
         self.openSettings = openSettings
+        self.openLicence = openLicence
         self.showWelcome = showWelcome
         self.openSpaces = openSpaces
         self.checkForUpdates = checkForUpdates
@@ -418,7 +423,7 @@ private struct MiniMapHeader: View {
                 Spacer()
                 Toggle("Tiling", isOn: Binding(get: { !model.status.paused }, set: { _ in model.manager.perform(.togglePause) }))
                     .toggleStyle(MenuSwitchStyle())
-                    .disabled(model.accessibilityLost)
+                    .disabled(model.accessibilityLost || model.licence.licenceNeeded)
                     .help("Off pauses tiling: Spacetile moves no windows and releases every shortcut except Pause"
                           + (model.shortcut(for: "pause").map { " (\($0))" } ?? ""))
             }
@@ -426,6 +431,23 @@ private struct MiniMapHeader: View {
                 MenuRow(title: "Grant Accessibility…", symbol: "exclamationmark.triangle.fill", tint: .orange) { run(model.showWelcome, close) }
                     .help("Accessibility was turned off, so tiling is paused. Spacetile restarts once it's back on.")
                     .padding(.horizontal, -8)
+            }
+            if model.licence.licenceNeeded {
+                MenuRow(title: "Enter Licence key…", symbol: "key.fill", tint: .orange) { run(model.openLicence, close) }
+                    .help(stopped + ", so tiling and profiles are stopped. Windows stay where they are.")
+                    .padding(.horizontal, -8)
+                switch model.licence.checkout {
+                case .renew?:
+                    MenuRow(title: "Renew Licence…", symbol: "arrow.clockwise") { run({ model.licence.openCheckout() }, close) }
+                        .help("Opens the Renewal checkout in your browser. It adds 12 months of updates; the new Licence key arrives by email.")
+                        .padding(.horizontal, -8)
+                case .buy?:
+                    MenuRow(title: "Buy a Licence…", symbol: "cart") { run({ model.licence.openCheckout() }, close) }
+                        .help("Opens spacetile.app in your browser to buy a Licence or Lifetime supporter. The Licence key arrives by email.")
+                        .padding(.horizontal, -8)
+                case nil:
+                    EmptyView()
+                }
             }
             if let error = model.configError {
                 MenuRow(title: error, symbol: "exclamationmark.triangle.fill", tint: .orange) { run({ NSWorkspace.shared.open(ConfigStore.file) }, close) }
@@ -436,8 +458,26 @@ private struct MiniMapHeader: View {
         .padding(.horizontal, 14).padding(.vertical, 10)
     }
 
+    /// Why tiling and profiles stopped, as the start of a sentence.
+    private var stopped: String {
+        switch model.licence.state {
+        case .updateWindowEnded: "The Licence's update window ended before this version was released"
+        case .keyInvalid: "The stored Licence key isn't valid"
+        case .revoked: "This Licence has been revoked"
+        case .trialOver, .trial, .licensed: "The Trial is over"
+        }
+    }
+
     private var status: String {
         if model.accessibilityLost { return "Needs Accessibility permission" }
+        if model.licence.licenceNeeded {
+            switch model.licence.state {
+            case .updateWindowEnded: return "Update window ended before this version: renew to use it"
+            case .keyInvalid: return "Licence key not valid: windows stay put until a valid one is entered"
+            case .revoked: return "Licence revoked: windows stay put until another Licence key is entered"
+            case .trialOver, .trial, .licensed: return "Trial over: windows stay put until a Licence key is entered"
+            }
+        }
         guard model.status.paused else { return "Tiling windows as they open" }
         return "Paused: windows stay put; only " + (model.shortcut(for: "pause").map { "Pause (\($0))" } ?? "Pause") + " works"
     }

@@ -122,9 +122,28 @@ final class WindowManager {
     private(set) var status = Status()
     /// While paused, windows are still tracked so layouts stay current, but no frame is written, no
     /// rule moves a window and commands are ignored. Resuming lays out the current Space again.
-    private(set) var isPaused = false
+    #if SPACETILE_DEV
+    var isPaused: Bool { pausedByHand }
+    #else
+    var isPaused: Bool { pausedByHand || licenceNeeded }
+    /// Neither in the Trial nor Licensed (`Licence.licenceNeeded`): tiling and profiles stop as if
+    /// paused, and Pause can't resume them. Windows stay where they are. `--dev` builds have no gate.
+    var licenceNeeded = false {
+        didSet {
+            // Before start, start() honours it
+            guard started, licenceNeeded != oldValue, !pausedByHand else { return }
+            pauseChanged()
+        }
+    }
+    #endif
+    /// Paused with the Tiling switch or the pause command.
+    private var pausedByHand = false
+
+    private var started = false
 
     func start() {
+        started = true
+        highlight.isSuspended = isPaused
         // A hung app must not freeze tiling for everyone else
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.5)
         // Forgets a last profile deleted or renamed while Spacetile wasn't running
@@ -216,13 +235,29 @@ final class WindowManager {
 
     // MARK: - Commands
 
+    private func pauseChanged() {
+        log.notice("tiling \(self.isPaused ? "paused" : "resumed", privacy: .public)")
+        if isPaused { preselectOverlay.hide() } else { adoptOnScreen() }
+        highlight.isSuspended = isPaused
+        spaceChanged()
+    }
+
+    /// Whether the Licence stops `action`, which it then logs. `--dev` builds have no gate.
+    private func stoppedByLicence(_ action: String) -> Bool {
+        #if SPACETILE_DEV
+        return false
+        #else
+        guard licenceNeeded else { return false }
+        log.notice("\(action, privacy: .public): a Licence key is needed, so tiling and profiles stay stopped")
+        return true
+        #endif
+    }
+
     func perform(_ command: Command) {
         if command == .togglePause {
-            isPaused.toggle()
-            log.notice("tiling \(self.isPaused ? "paused" : "resumed", privacy: .public)")
-            if isPaused { preselectOverlay.hide() } else { adoptOnScreen() }
-            highlight.isSuspended = isPaused
-            return spaceChanged()
+            guard !stoppedByLicence("pause") else { return }
+            pausedByHand.toggle()
+            return pauseChanged()
         }
         guard !isPaused else { return log.notice("\(command.text, privacy: .public): paused") }
         switch command {
@@ -957,6 +992,7 @@ final class WindowManager {
     /// Saves the current layout as profile `name`. A profile with that name already takes the new
     /// layout and keeps its settings; a name that would share another profile's file is refused.
     func capture(_ name: String, makeCurrent: Bool = false) {
+        guard !stoppedByLicence("capture") else { return }
         let profiles = ProfileStore.all
         if let existing = profiles.first(where: { $0.name == name }) { return recapture(existing, makeCurrent: makeCurrent) }
         if let problem = profileNameProblem(name, taken: Set(profiles.map(\.name))) {
@@ -970,6 +1006,7 @@ final class WindowManager {
 
     /// Replaces a profile's windows and layouts with the current ones, keeping its other settings.
     func recapture(_ profile: Profile, makeCurrent: Bool = false) {
+        guard !stoppedByLicence("capture") else { return }
         var updated = profile
         let fresh = snapshotProfile(profile.name)
         updated.spaces = fresh.spaces

@@ -27,7 +27,8 @@ let package = Package(
                           linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
         // Exports the Keys catalogue and placement icons for the Raycast extension.
         .executableTarget(name: "spacetile-catalog", dependencies: ["SpacetileCore"]),
-        .testTarget(name: "SpacetileCoreTests", dependencies: ["SpacetileCore"]),
+        // Fixtures/ holds Licence keys the licence service's tests sign; the tests read them by path
+        .testTarget(name: "SpacetileCoreTests", dependencies: ["SpacetileCore"], exclude: ["Fixtures"]),
         .testTarget(name: "SpacetileInstallTests", dependencies: ["SpacetileInstall"]),
     ]
 )
