@@ -1338,7 +1338,7 @@ struct GeneralTab: View {
             }
             Section("macOS tiling") {
                 toggle("Use macOS tiling with Spacetile",
-                       "Tiling a window from its green button, the Window menu or fn⌃ arrows becomes the matching Spacetile command: halves and quarters place it, Fill zooms it, Arrange tiles the windows it arranged, and Return to Previous Size restores. The other windows re-tile round it. Off, Spacetile puts tiled windows back.",
+                       "Tiling a window from its green button, the Window menu or fn⌃ arrows becomes the matching Spacetile command: halves and quarters place it, Fill zooms it, Arrange tiles the windows it arranged, and Return to Previous Size restores. The other windows re-tile round it. Off, Spacetile leaves the window where macOS put it until the Space is next laid out.",
                        Binding(get: { model.settings.adoptsNativeTiling }, set: { model.settings.nativeTiling = $0; model.save() }))
             }
             Section("Moving windows between Spaces") {

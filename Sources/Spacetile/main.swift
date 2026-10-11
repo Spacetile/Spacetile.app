@@ -421,7 +421,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let alert = NSAlert()
         alert.messageText = "Capture Layout"
-        alert.informativeText = "Saves every Space's windows and tiling. A profile loads by itself when the display it was captured on becomes the main display."
+        alert.informativeText = "Saves every Space's windows and tiling. To apply it by itself when these displays connect, turn on Apply automatically in Edit Profiles."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         let display = (NSScreen.main?.localizedName ?? "profile").lowercased()
         field.stringValue = uniqueProfileName(display, taken: Set(profiles.map(\.name)))

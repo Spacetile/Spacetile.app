@@ -2,7 +2,7 @@
 # Builds build/Spacetile.app and signs it.
 # Usage: bundle.sh [--dev] [--install] | --release <version> --revocations <file>
 # `--dev` compiles out the Trial and Licence check, and compiles in the development aids that
-# `spacetile-ctl` can send (see https://spacetile.app/docs/setup/#developer-commands). Every other
+# `spacetile-ctl` can send (see https://spacetile.app/docs/build/#developer-commands). Every other
 # build, the default one included, has the check, except releases numbered below 1.0.0 (the free
 # public beta; SpacetileCore's LicenceGate).
 # By default signs with the first "Apple Development" identity so the Accessibility grant survives
@@ -139,7 +139,7 @@ codesign --force "${SIGN[@]}" --identifier com.kodehort.spacetile "$APP"
 codesign -d -r- "$APP" 2>&1 | rg designated
 
 if $INSTALL; then
-  pkill -x Spacetile && while pgrep -x Spacetile >/dev/null; do sleep 0.2; done || true
+  if pkill -x Spacetile; then while pgrep -x Spacetile >/dev/null; do sleep 0.2; done; fi
   /bin/rm -rf /Applications/Spacetile.app
   ditto "$APP" /Applications/Spacetile.app
   open /Applications/Spacetile.app
