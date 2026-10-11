@@ -6,14 +6,9 @@ import SpacetileCore
 /// The install's Trial and Licence key, kept in the Keychain, and what they entitle it to. Tiling
 /// and profiles stop while `licenceNeeded`; the menu bar and Settings keep working.
 @Observable final class Licence {
-    // Each placeholder below carries the marker SPACETILE-PLACEHOLDER in its value. Release builds
-    // fail while the app binary still holds it: a release with the placeholder public key would
-    // refuse every Licence key, so every install would stop when its Trial ends.
-
-    /// The raw Ed25519 public key that Licence keys are signed with, base64.
-    /// Placeholder until the maker generates the Licence key pair: it isn't base64, so no key
-    /// verifies against it. Replace it with the public half of the licence service's signing key.
-    static let publicKey = "SPACETILE-PLACEHOLDER-licence-public-key"
+    /// The raw Ed25519 public key that Licence keys are signed with, base64: the public half of the
+    /// licence service's signing key (SST_SECRET_LicenceSigningKey).
+    static let publicKey = "1IGpIV3w9B+ehJ8/a1RUwq5CfbF5DYl3myKfLtZYwq0="
 
     /// The site's Buy page, which the Buy buttons open through `openCheckout()`. It offers both ways
     /// to buy, a Licence and Lifetime supporter, each through its own Payment Link, so the app needs
@@ -23,6 +18,7 @@ import SpacetileCore
     /// The Renewal Payment Link, which the Renew buttons open through `openCheckout()`.
     /// Placeholder until production has the Renewal Payment Link: the site's production deploy
     /// creates it in Stripe and outputs it as `renewalPaymentLink`; replace this with that URL.
+    /// Release builds fail while the app binary holds the marker SPACETILE-PLACEHOLDER.
     static let renewalLink = URL(string: "https://buy.stripe.com/SPACETILE-PLACEHOLDER-renewal-payment-link")!
 
     #if SPACETILE_DEV
