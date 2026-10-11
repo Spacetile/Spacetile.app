@@ -16,10 +16,9 @@ import SpacetileCore
     static let buyPage = URL(string: "https://spacetile.app/buy/")!
 
     /// The Renewal Payment Link, which the Renew buttons open through `openCheckout()`.
-    /// Placeholder until production has the Renewal Payment Link: the site's production deploy
-    /// creates it in Stripe and outputs it as `renewalPaymentLink`; replace this with that URL.
-    /// Release builds fail while the app binary holds the marker SPACETILE-PLACEHOLDER.
-    static let renewalLink = URL(string: "https://buy.stripe.com/SPACETILE-PLACEHOLDER-renewal-payment-link")!
+    /// Production's live link, the site deploy's `renewalPaymentLink` output. Shipped builds open
+    /// it, so it must stay active in Stripe.
+    static let renewalLink = URL(string: "https://buy.stripe.com/aFa14m9wJ9T5fnc8oE2kw02")!
 
     #if SPACETILE_DEV
     /// `bundle.sh --dev` compiles the gate out, so contributors can run Spacetile without a Licence.

@@ -12,12 +12,15 @@
 # identity, hardened runtime and a secure timestamp, ready for notarization. No fallback.
 # `--revocations` embeds the licence service's list of revoked Licence IDs, which the release pipeline
 # fetches, as Contents/Resources/Revocations.json, so the build refuses those keys. Releases need it.
+# Other builds are versioned after the latest release tag, as `0.2.0-local`, so Sparkle's "up to date"
+# message names versions that agree with each other. Sparkle compares the build number, a timestamp.
 # Every build embeds Sparkle and its feed; only release builds check for updates on their own, so a
 # self-built copy isn't swapped for a download that lacks its Accessibility grant.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 FLAGS=()
-VERSION=0.1.0
+TAG=$(git describe --tags --match 'app-v*' --abbrev=0 2>/dev/null || echo app-v0.0.0)
+VERSION=${TAG#app-v}-local
 RELEASE=false
 REVOCATIONS=
 while (($#)); do
