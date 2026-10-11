@@ -146,8 +146,13 @@ struct MiniMapView: View {
                     model.openSpaces()
                 } label: {
                     Label("Open in a Window", systemImage: "arrow.up.forward.app").labelStyle(.iconOnly)
+                        .foregroundStyle(.secondary)
+                        .padding(4)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(MenuRowStyle())
+                // The popover focuses its first control on open, which drew it as a blue highlight
+                .focusEffectDisabled()
                 .help("Open the Spaces map in a window")
                 SpacesMap(model: model, cardHeight: 51, close: close)
                     .frame(maxWidth: .infinity, alignment: .leading)

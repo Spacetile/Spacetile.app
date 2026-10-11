@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds build/Spacetile.app and signs it.
-# Usage: bundle.sh [--dev | --release <version> --revocations <file>]
+# Usage: bundle.sh [--dev] [--install] | --release <version> --revocations <file>
 # `--dev` compiles out the Trial and Licence check, and compiles in the development aids that
 # `spacetile-ctl` can send (see https://spacetile.app/docs/setup/#developer-commands). Every other
 # build, the default one included, has the check, except releases numbered below 1.0.0 (the free
@@ -14,6 +14,9 @@
 # fetches, as Contents/Resources/Revocations.json, so the build refuses those keys. Releases need it.
 # Other builds are versioned after the latest release tag, as `0.2.0-local`, so Sparkle's "up to date"
 # message names versions that agree with each other. Sparkle compares the build number, a timestamp.
+# `--install` then quits Spacetile, replaces /Applications/Spacetile.app with the build and opens it,
+# so the Install Command button works (it needs the app in Applications). It replaces a release
+# install too; reinstall the DMG to go back.
 # Every build embeds Sparkle and its feed; only release builds check for updates on their own, so a
 # self-built copy isn't swapped for a download that lacks its Accessibility grant.
 set -euo pipefail
@@ -23,18 +26,24 @@ TAG=$(git describe --tags --match 'app-v*' --abbrev=0 2>/dev/null || echo app-v0
 VERSION=${TAG#app-v}-local
 RELEASE=false
 REVOCATIONS=
+INSTALL=false
 while (($#)); do
   case $1 in
     --dev) FLAGS=(-Xswiftc -DSPACETILE_DEV) ;;
+    --install) INSTALL=true ;;
     --release) RELEASE=true VERSION=${2:?--release needs a version}; shift ;;
     # Relative to where it was run from, before the cd above
     --revocations) REVOCATIONS=${2:?--revocations needs a file}; [[ $REVOCATIONS == /* ]] || REVOCATIONS=$OLDPWD/$REVOCATIONS; shift ;;
-    *) echo "usage: bundle.sh [--dev | --release <version> --revocations <file>]" >&2; exit 2 ;;
+    *) echo "usage: bundle.sh [--dev] [--install] | --release <version> --revocations <file>" >&2; exit 2 ;;
   esac
   shift
 done
 if $RELEASE && ((${#FLAGS[@]})); then
   echo "error: --dev and --release can't be combined" >&2
+  exit 2
+fi
+if $RELEASE && $INSTALL; then
+  echo "error: --install and --release can't be combined" >&2
   exit 2
 fi
 if $RELEASE && [[ -z $REVOCATIONS ]]; then
@@ -128,3 +137,11 @@ for code in "$SPARKLE/Versions/B/Autoupdate" "$SPARKLE/Versions/B/Updater.app" "
 done
 codesign --force "${SIGN[@]}" --identifier com.kodehort.spacetile "$APP"
 codesign -d -r- "$APP" 2>&1 | rg designated
+
+if $INSTALL; then
+  pkill -x Spacetile && while pgrep -x Spacetile >/dev/null; do sleep 0.2; done || true
+  /bin/rm -rf /Applications/Spacetile.app
+  ditto "$APP" /Applications/Spacetile.app
+  open /Applications/Spacetile.app
+  echo "Installed /Applications/Spacetile.app"
+fi

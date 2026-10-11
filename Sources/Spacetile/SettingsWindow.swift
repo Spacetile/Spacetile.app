@@ -20,7 +20,7 @@ final class SettingsWindow {
         ("Spaces", "Spaces", "rectangle.3.group", CGSize(width: 620, height: 480)),
         ("MenuBar", "Menu Bar", "menubar.rectangle", CGSize(width: 620, height: 640)),
         ("Licence", "Licence", "key", CGSize(width: 620, height: 440)),
-        ("Setup", "Permissions & macOS", "checkmark.shield", CGSize(width: 620, height: 560)),
+        ("Setup", "Permissions", "checkmark.shield", CGSize(width: 620, height: 560)),
     ]
 
     private lazy var panes: PaneController = {
@@ -135,7 +135,7 @@ final class SettingsWindow {
     private func updateChecksPane() {
         guard let item = panes.tabViewItems.first(where: { $0.identifier as? String == "Setup" }) else { return }
         let count = model.problemCount
-        item.label = count > 0 ? "Permissions & macOS (\(count))" : "Permissions & macOS"
+        item.label = count > 0 ? "Permissions (\(count))" : "Permissions"
         item.viewController?.title = item.label
         item.image = NSImage(systemSymbolName: count > 0 ? "exclamationmark.shield" : "checkmark.shield", accessibilityDescription: item.label)
         if model.tab == "Setup" { window.title = item.label }
@@ -236,7 +236,7 @@ enum DockPresence {
     /// The most modifiers held so far while recording a prefix.
     private var prefixPeak: Set<KeyChord.Modifier> = []
     var tab = "General"
-    /// Opens the Welcome window, from Permissions & macOS.
+    /// Opens the Welcome window, from Permissions.
     var showWelcome: () -> Void = {}
     var showProfiles: () -> Void = {}
     var checkForUpdates: () -> Void = {}

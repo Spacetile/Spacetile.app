@@ -21,7 +21,7 @@ scripts/bundle.sh --dev
 open build/Spacetile.app
 ```
 
-`scripts/bundle.sh` builds the release binary, wraps it in `build/Spacetile.app` and signs it with your first "Apple Development" identity, or ad hoc if you have none. [Setup](https://spacetile.app/docs/setup/) covers permissions and the `--dev` aids.
+`scripts/bundle.sh` builds the release binary, wraps it in `build/Spacetile.app` and signs it with your first "Apple Development" identity, or ad hoc if you have none. Add `--install` to replace `/Applications/Spacetile.app` with the build and open it there, which the Install Command button needs. [Setup](https://spacetile.app/docs/setup/) covers permissions and the `--dev` aids.
 
 ## Support
 

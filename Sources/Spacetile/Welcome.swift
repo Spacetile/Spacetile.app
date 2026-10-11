@@ -4,7 +4,7 @@ import SwiftUI
 
 /// First-run guide: why Spacetile needs Accessibility and a button that asks for it, the macOS
 /// settings it relies on, whose shortcuts to start from, then the few worth learning first. Shown on first launch and
-/// whenever Accessibility is missing; Settings › Permissions & macOS brings it back.
+/// whenever Accessibility is missing; Settings › Permissions brings it back.
 final class Welcome {
     static let seenKey = "welcomeSeen"
     private let model: WelcomeModel
@@ -144,7 +144,7 @@ struct WelcomeView: View {
     private var macOS: some View {
         Group {
             heading("Check your macOS settings", symbol: "gearshape.2")
-            Text("A few macOS settings change how Spaces behave. Fix any marked here; you can change them later in Settings › Permissions & macOS.")
+            Text("A few macOS settings change how Spaces behave. Fix any marked here; you can change them later in Settings › Permissions.")
                 .foregroundStyle(.secondary)
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
