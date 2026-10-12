@@ -5,7 +5,7 @@ import Foundation
 public enum Entitlement: Equatable, Sendable {
     /// Inside the 14-day Trial, with `daysLeft` from 14 down to 1.
     case trial(daysLeft: Int)
-    /// A valid Licence key whose update window covers this build.
+    /// A valid Licence key that covers this build.
     case licensed(LicenceKey)
     /// The Trial has ended and there's no Licence key.
     case trialOver
@@ -14,8 +14,8 @@ public enum Entitlement: Equatable, Sendable {
     case keyInvalid
     /// The Trial has ended and the key's Licence is in this build's revoked list.
     case revoked
-    /// The Trial has ended and the key is valid, but this build was released after its update window
-    /// closed. Renewing covers it.
+    /// The Trial has ended and the key is valid, but its update window closed before the day this
+    /// build's coverage names. Renewing covers it.
     case updateWindowEnded(LicenceKey)
 
     /// Tiling and profiles run: in the Trial or Licensed.
@@ -45,6 +45,22 @@ public enum UpdateOffer<Release> {
 
 extension UpdateOffer: Equatable where Release: Equatable {}
 extension UpdateOffer: Sendable where Release: Sendable {}
+
+/// Which Licences cover a release (ADR 0005). Every build carries one, in its Info.plist and its
+/// appcast item, and both come from the one value the release pipeline works out, in `text` form.
+public enum Coverage: Equatable, Sendable {
+    /// Every Licence whose update window is open on this UTC day. An X.Y.0 release names the day it
+    /// was released; its later point releases (X.Y.Z, Z > 0) name the same day, so they're free
+    /// wherever X.Y.0 is.
+    case windowOpenOn(Date)
+    /// Every valid, unrevoked Licence, whatever its window: a security fix.
+    case anyLicence
+
+    /// A `yyyy-MM-dd` UTC day, or `any` for a security fix. Nil for anything else.
+    public init?(text: String) {
+        if text == "any" { self = .anyLicence } else if let day = Date(utcDay: text) { self = .windowOpenOn(day) } else { return nil }
+    }
+}
 
 /// A Licence key that has verified, and the Licence it proves.
 ///
@@ -81,9 +97,14 @@ public struct LicenceKey: Equatable, Sendable {
         self.issued = issued
     }
 
-    /// Whether the update window covers a release made at `date`, judged by its UTC day.
-    func covers(_ date: Date) -> Bool {
-        utcCalendar.startOfDay(for: date) <= updateWindowEnd
+    /// Whether the Licence covers a release with `coverage`, a window day judged by its UTC day. A
+    /// release with none counts as released at the end of time, so only a lifetime window covers it.
+    func covers(_ coverage: Coverage?) -> Bool {
+        switch coverage {
+        case .windowOpenOn(let date): utcCalendar.startOfDay(for: date) <= updateWindowEnd
+        case .anyLicence: true
+        case nil: updateWindowEnd >= .distantFuture
+        }
     }
 
     private struct Format1: Decodable {
@@ -95,19 +116,19 @@ public struct LicenceKey: Equatable, Sendable {
     }
 }
 
-/// Everything a build knows about licensing: the public key keys are signed with, its own release
-/// date and the Licences revoked when it was released.
+/// Everything a build knows about licensing: the public key keys are signed with, its own coverage
+/// and the Licences revoked when it was released.
 public struct LicenceCheck: Sendable {
     public static let trialDays = 14
 
     let publicKey: Data
-    let releaseDate: Date
+    let coverage: Coverage
     let revokedLicences: Set<String>
 
-    /// `releaseDate` is judged by its UTC day; `revokedLicences` holds Licence IDs.
-    public init(publicKey: Data, releaseDate: Date, revokedLicences: Set<String>) {
+    /// `revokedLicences` holds Licence IDs.
+    public init(publicKey: Data, coverage: Coverage, revokedLicences: Set<String>) {
         self.publicKey = publicKey
-        self.releaseDate = releaseDate
+        self.coverage = coverage
         self.revokedLicences = revokedLicences
     }
 
@@ -116,29 +137,30 @@ public struct LicenceCheck: Sendable {
     public func entitlement(key: String?, trialStart: Date?, now: Date) -> Entitlement {
         let verified = key.flatMap { LicenceKey(verifying: $0, publicKey: publicKey) }
         let revoked = verified.map { revokedLicences.contains($0.id) } ?? false
-        if let verified, !revoked, verified.covers(releaseDate) { return .licensed(verified) }
+        if let verified, !revoked, verified.covers(coverage) { return .licensed(verified) }
         if let daysLeft = trialDaysLeft(trialStart, now: now) { return .trial(daysLeft: daysLeft) }
         if let verified { return revoked ? .revoked : .updateWindowEnded(verified) }
         return key == nil ? .trialOver : .keyInvalid
     }
 
-    /// Whether this install may take a release published at `releaseDated`: any release during the
-    /// Trial, otherwise one whose UTC day is on or before the key's update window end. A release
-    /// with no date counts as released at the end of time, so only a lifetime window covers it.
-    public func mayTake(releaseDated: Date?, key: String?, trialStart: Date?, now: Date) -> Bool {
+    /// Whether this install may take a release with `coverage`, nil when its appcast item gives
+    /// neither coverage nor a date: any release during the Trial, otherwise one the key covers.
+    /// It agrees with `entitlement` on the build it would install, so a release it takes runs,
+    /// unless that build revokes the key.
+    public func mayTake(_ coverage: Coverage?, key: String?, trialStart: Date?, now: Date) -> Bool {
         if trialDaysLeft(trialStart, now: now) != nil { return true }
         guard let licence = key.flatMap({ LicenceKey(verifying: $0, publicKey: publicKey) }),
               !revokedLicences.contains(licence.id) else { return false }
-        return licence.covers(releaseDated ?? .distantFuture)
+        return licence.covers(coverage)
     }
 
     /// What the updater offers from `newer`, the releases newer than this build, newest first.
     /// The newest one this install may take installs. When it may take none, the newest is shown
     /// marked "Renew to install". Nil when there's nothing newer. Every Channel gets the same answer.
-    public func offer<Release>(_ newer: [Release], published: (Release) -> Date?, key: String?, trialStart: Date?,
+    public func offer<Release>(_ newer: [Release], coverage: (Release) -> Coverage?, key: String?, trialStart: Date?,
                                now: Date) -> UpdateOffer<Release>? {
         guard let newest = newer.first else { return nil }
-        if let takeable = newer.first(where: { mayTake(releaseDated: published($0), key: key, trialStart: trialStart, now: now) }) {
+        if let takeable = newer.first(where: { mayTake(coverage($0), key: key, trialStart: trialStart, now: now) }) {
             return .install(takeable)
         }
         return .renewToInstall(newest)
@@ -154,8 +176,8 @@ public struct LicenceCheck: Sendable {
 }
 
 extension Date {
-    /// Midnight UTC at the start of a `yyyy-MM-dd` day, the form Licence keys and the bundle's
-    /// `SpacetileReleaseDate` use. Nil for anything else, including days that don't exist.
+    /// Midnight UTC at the start of a `yyyy-MM-dd` day, the form Licence keys, the bundle's
+    /// `SpacetileReleaseDate` and `Coverage` use. Nil for anything else, including days that don't exist.
     public init?(utcDay text: String) {
         let parts = text.split(separator: "-", omittingEmptySubsequences: false)
         guard parts.count == 3, parts[0].count == 4, parts[1].count == 2, parts[2].count == 2,

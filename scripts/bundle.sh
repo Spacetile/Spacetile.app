@@ -1,15 +1,16 @@
 #!/bin/bash
 # Builds build/Spacetile.app and signs it.
-# Usage: bundle.sh [--dev] [--install] | --release <version> --revocations <file>
+# Usage: bundle.sh [--dev] [--install] | --release <version> --coverage <yyyy-mm-dd|any> --revocations <file>
 # `--dev` compiles out the Trial and Licence check, and compiles in the development aids that
 # `spacetile-ctl` can send (see https://spacetile.app/docs/build/#developer-commands). Every other
 # build, the default one included, has the check, except releases numbered below 1.0.0 (the free
 # public beta; SpacetileCore's LicenceGate).
 # By default signs with the first "Apple Development" identity so the Accessibility grant survives
 # rebuilds (TCC then checks the certificate, not the binary hash). Falls back to ad-hoc with a warning.
-# `--release` stamps the version and today's UTC release date (SpacetileReleaseDate, which the licence
-# check compares with a key's update window), then signs with the first "Developer ID Application"
-# identity, hardened runtime and a secure timestamp, ready for notarization. No fallback.
+# `--release` stamps the version, today's UTC release date (SpacetileReleaseDate) and the release's
+# coverage (SpacetileCoverage, from .github/scripts/coverage.sh: which Licences the licence check
+# accepts; its appcast item carries the same value), then signs with the first "Developer ID
+# Application" identity, hardened runtime and a secure timestamp, ready for notarization. No fallback.
 # `--revocations` embeds the licence service's list of revoked Licence IDs, which the release pipeline
 # fetches, as Contents/Resources/Revocations.json, so the build refuses those keys. Releases need it.
 # Other builds are versioned after the latest release tag, as `0.2.0-local`, so Sparkle's "up to date"
@@ -26,15 +27,17 @@ TAG=$(git describe --tags --match 'app-v*' --abbrev=0 2>/dev/null || echo app-v0
 VERSION=${TAG#app-v}-local
 RELEASE=false
 REVOCATIONS=
+COVERAGE=
 INSTALL=false
 while (($#)); do
   case $1 in
     --dev) FLAGS=(-Xswiftc -DSPACETILE_DEV) ;;
     --install) INSTALL=true ;;
     --release) RELEASE=true VERSION=${2:?--release needs a version}; shift ;;
+    --coverage) COVERAGE=${2:?--coverage needs a value}; shift ;;
     # Relative to where it was run from, before the cd above
     --revocations) REVOCATIONS=${2:?--revocations needs a file}; [[ $REVOCATIONS == /* ]] || REVOCATIONS=$OLDPWD/$REVOCATIONS; shift ;;
-    *) echo "usage: bundle.sh [--dev] [--install] | --release <version> --revocations <file>" >&2; exit 2 ;;
+    *) echo "usage: bundle.sh [--dev] [--install] | --release <version> --coverage <yyyy-mm-dd|any> --revocations <file>" >&2; exit 2 ;;
   esac
   shift
 done
@@ -48,6 +51,14 @@ if $RELEASE && $INSTALL; then
 fi
 if $RELEASE && [[ -z $REVOCATIONS ]]; then
   echo "error: a release needs --revocations, so it refuses revoked Licences" >&2
+  exit 2
+fi
+if $RELEASE && [[ ! $COVERAGE =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2}|any)$ ]]; then
+  echo "error: a release needs --coverage yyyy-mm-dd or any (.github/scripts/coverage.sh)" >&2
+  exit 2
+fi
+if ! $RELEASE && [[ -n $COVERAGE ]]; then
+  echo "error: --coverage only goes with --release" >&2
   exit 2
 fi
 if [[ -n $REVOCATIONS && ! -s $REVOCATIONS ]]; then
@@ -89,7 +100,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>SUEnableAutomaticChecks</key><$RELEASE/>
 </dict></plist>
 PLIST
-$RELEASE && plutil -insert SpacetileReleaseDate -string "$(date -u +%Y-%m-%d)" "$APP/Contents/Info.plist"
+if $RELEASE; then
+  plutil -insert SpacetileReleaseDate -string "$(date -u +%Y-%m-%d)" "$APP/Contents/Info.plist"
+  plutil -insert SpacetileCoverage -string "$COVERAGE" "$APP/Contents/Info.plist"
+fi
 # The app icon: Resources/AppIcon.icon is an Icon Composer file, compiled into the layered
 # Assets.car Tahoe draws and a flat AppIcon.icns for everything else.
 mkdir -p "$APP/Contents/Resources"
@@ -98,6 +112,25 @@ xcrun actool Resources/AppIcon.icon --compile "$APP/Contents/Resources" --platfo
   --output-partial-info-plist "$(mktemp -d)/icon.plist" >/dev/null
 # Licence.swift reads it; a build without it refuses no Licence
 [[ -z $REVOCATIONS ]] || cp "$REVOCATIONS" "$APP/Contents/Resources/Revocations.json"
+# The licence notices of WhichSpace (vendored in CSkyLight) and of every package in
+# Package.resolved, verbatim, for Settings → General → Acknowledgements. MIT needs them in every
+# copy, so a package without a licence file fails the build.
+{
+  echo "Spacetile includes code from these projects, under the licences that follow."
+  printf '\n\n%s\n\n' "WhichSpace <https://github.com/gechr/WhichSpace>"
+  cat Sources/CSkyLight/LICENSE-WhichSpace
+  # One line per pin, so its location and version stay together; a branch pin has only a revision
+  while read -r url version; do
+    name=${url##*/} name=${name%.git}
+    notice=(.build/checkouts/"$name"/LICEN[CS]E*)
+    if [[ ! -f ${notice[0]} ]]; then
+      echo "error: no licence file for $name in .build/checkouts" >&2
+      exit 1
+    fi
+    printf '\n\n%s\n\n' "$name $version <$url>"
+    cat "${notice[0]}"
+  done < <(jq -r '.pins[] | "\(.location) \(.state.version // .state.revision)"' Package.resolved)
+} > "$APP/Contents/Resources/Acknowledgements.txt"
 
 # App Intents metadata (the Focus filter). Xcode normally generates this; SwiftPM leaves the
 # compiler's constant-value files behind, so run Apple's processor on them here.

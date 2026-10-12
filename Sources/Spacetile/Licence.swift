@@ -41,6 +41,8 @@ import SpacetileCore
     private static let keyAccount = "licence-key"
 
     private(set) var state: Entitlement
+    /// Which Licences cover this build.
+    let coverage: Coverage
     private let check: LicenceCheck
     private let trialStart: Date?
     private var key: String?
@@ -66,17 +68,20 @@ import SpacetileCore
     /// the Trial; deleting the Keychain item starts it again (soft enforcement).
     init(now: Date = .now) {
         let info = Bundle.main.infoDictionary ?? [:]
-        // Release builds record their UTC day (bundle.sh --release). Other builds have none and
-        // count as released today, so a key covers them while its update window is open.
-        let released = (info["SpacetileReleaseDate"] as? String).flatMap { Date(utcDay: $0) } ?? now
+        // Release builds record their coverage (bundle.sh --release --coverage). Releases from
+        // before it count from their release day; other builds have neither and count from today,
+        // so a key covers them while its update window is open.
+        let coverage = (info["SpacetileCoverage"] as? String).flatMap { Coverage(text: $0) }
+            ?? .windowOpenOn((info["SpacetileReleaseDate"] as? String).flatMap { Date(utcDay: $0) } ?? now)
         // Release builds carry the Licences revoked when they were made (bundle.sh --revocations).
         // Other builds have no list and refuse no Licence.
         let revoked = Bundle.main.url(forResource: "Revocations", withExtension: "json")
             .flatMap { try? Data(contentsOf: $0) }
             .flatMap { Revocations.licenceIDs(in: $0) } ?? []
-        let check = LicenceCheck(publicKey: Data(base64Encoded: Self.publicKey) ?? Data(), releaseDate: released, revokedLicences: revoked)
+        let check = LicenceCheck(publicKey: Data(base64Encoded: Self.publicKey) ?? Data(), coverage: coverage, revokedLicences: revoked)
         let trialStart = Self.readTrialStart(now: now)
         let key = Keychain.read(Self.keyAccount)
+        self.coverage = coverage
         self.check = check
         self.trialStart = trialStart
         self.key = key
@@ -121,7 +126,7 @@ import SpacetileCore
         case .revoked:
             return "This Licence has been revoked."
         case .updateWindowEnded(let licence):
-            return "This Licence's update window ended on \(Self.day(licence.updateWindowEnd)), before this version was released. Renew it to use this version."
+            return "This Licence's update window ended on \(Self.day(licence.updateWindowEnd)). \(Self.needs(coverage)) Renew it to use this version."
         case .keyInvalid, .trialOver, .trial:
             return "That isn't a valid Licence key. Copy the whole key from your Licence email."
         }
@@ -157,18 +162,28 @@ import SpacetileCore
         renewalLink.appending(queryItems: [URLQueryItem(name: "client_reference_id", value: licence.id)])
     }
 
-    /// Whether this install may take a release published at `date`, nil when the appcast gives none.
+    /// Whether this install may take a release with `coverage`, nil when the appcast gives none.
     /// A build without the gate may take any release.
-    func mayTake(releaseDated date: Date?, now: Date = .now) -> Bool {
+    func mayTake(_ coverage: Coverage?, now: Date = .now) -> Bool {
         guard Self.gated else { return true }
-        return check.mayTake(releaseDated: date, key: key, trialStart: trialStart, now: now)
+        return check.mayTake(coverage, key: key, trialStart: trialStart, now: now)
     }
 
     /// What the updater offers from `newer`, the releases newer than this build, newest first. A
     /// build without the gate installs the newest.
-    func offer<Release>(_ newer: [Release], published: (Release) -> Date?, now: Date = .now) -> UpdateOffer<Release>? {
+    func offer<Release>(_ newer: [Release], coverage: (Release) -> Coverage?, now: Date = .now) -> UpdateOffer<Release>? {
         guard Self.gated else { return newer.first.map { .install($0) } }
-        return check.offer(newer, published: published, key: key, trialStart: trialStart, now: now)
+        return check.offer(newer, coverage: coverage, key: key, trialStart: trialStart, now: now)
+    }
+
+    /// The update window a release with `coverage` needs, as a sentence. Only a lifetime window
+    /// covers a release with none.
+    static func needs(_ coverage: Coverage?) -> String {
+        switch coverage {
+        case .windowOpenOn(let date): "This version needs one still open on \(day(date))."
+        case .anyLicence: "This version is a security fix that every Licence covers."
+        case nil: "This version needs a lifetime Licence."
+        }
     }
 
     /// Whether an update window end is the far-future end that lifetime Licences carry.

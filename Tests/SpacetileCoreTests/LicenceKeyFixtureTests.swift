@@ -43,7 +43,7 @@ private struct Fixtures: Decodable {
         let publicKey = try #require(Data(base64Encoded: fixtures.publicKey))
         for fixture in fixtures.keys {
             let released = try #require(Date(utcDay: fixture.windowEnd))
-            let check = LicenceCheck(publicKey: publicKey, releaseDate: released, revokedLicences: [])
+            let check = LicenceCheck(publicKey: publicKey, coverage: .windowOpenOn(released), revokedLicences: [])
             let state = check.entitlement(key: fixture.key, trialStart: nil, now: released)
             #expect(state.licence?.id == fixture.id && state.isEntitled, "\(fixture.name): \(state)")
         }

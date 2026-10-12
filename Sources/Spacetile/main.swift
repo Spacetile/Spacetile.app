@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.miniMap?.model.status = status
             self.updateTitle()
         }
-        if !UserDefaults.standard.bool(forKey: Welcome.seenKey) || !AXIsProcessTrusted() { welcome.show() }
+        if !UserDefaults.standard.bool(forKey: Welcome.seenKey) || TilingPrerequisite.missing != nil { welcome.show() }
         manager.confirmModeMismatch = { profile, spansNow in Self.confirmModeMismatch(profile, spansNow: spansNow) }
         manager.onProfileWarning = { profile, unplaced in
             // After the load finishes, so the warning doesn't hold it up
@@ -172,11 +172,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Accessibility is granted in System Settings while the app keeps running, so check every
-    /// second until it is. The Welcome window asks for it; this only notices.
+    /// second until it is, and until the EULA is agreed to. The Welcome window asks for both; this
+    /// only notices.
     private func startWhenTrusted(waiting: Bool = false) {
-        guard AXIsProcessTrusted() else {
-            if !waiting { log.notice("waiting for accessibility permission") }
-            statusItem.button?.image = Self.symbol("exclamationmark.triangle", "Spacetile needs Accessibility permission")
+        if let missing = TilingPrerequisite.missing {
+            if !waiting { log.notice("waiting for accessibility permission and the EULA") }
+            statusItem.button?.image = Self.symbol("exclamationmark.triangle", missing.waiting)
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.startWhenTrusted(waiting: true) }
             return
         }
@@ -380,10 +381,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func statusItemClicked(_ button: NSStatusBarButton) {
         checkAccessibility()
         if let miniMap { return miniMap.toggle(from: button) }
-        // Nothing runs until Accessibility is granted, so offer the way there instead
+        // Nothing runs until Accessibility is granted and the EULA agreed to, so offer the way there instead
+        let missing = TilingPrerequisite.missing ?? .accessibility
         let menu = NSMenu()
-        menu.addItem(withTitle: "Spacetile needs Accessibility permission", action: nil, keyEquivalent: "")
-        menu.addItem(withTitle: "Set Up Accessibility…", action: #selector(showWelcome), keyEquivalent: "").target = self
+        menu.addItem(withTitle: missing.waiting, action: nil, keyEquivalent: "")
+        menu.addItem(withTitle: missing.setUp, action: #selector(showWelcome), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Quit Spacetile", action: #selector(NSApplication.terminate), keyEquivalent: "q")

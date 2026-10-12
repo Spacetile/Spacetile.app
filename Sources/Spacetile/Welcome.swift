@@ -2,9 +2,10 @@ import AppKit
 import SpacetileCore
 import SwiftUI
 
-/// First-run guide: why Spacetile needs Accessibility and a button that asks for it, the macOS
-/// settings it relies on, whose shortcuts to start from, then the few worth learning first. Shown on first launch and
-/// whenever Accessibility is missing; Settings › Permissions brings it back.
+/// First-run guide: why Spacetile needs Accessibility and a button that asks for it, with the EULA
+/// agreed to by going on from there, the macOS settings it relies on, whose shortcuts to start from,
+/// then the few worth learning first. Shown on first launch, whenever Accessibility is missing and
+/// when the EULA has changed; Settings › Permissions brings it back.
 final class Welcome {
     static let seenKey = "welcomeSeen"
     private let model: WelcomeModel
@@ -31,7 +32,7 @@ final class Welcome {
 
     func show(page: WelcomeModel.Page? = nil) {
         model.refresh()
-        model.page = page ?? (model.trusted ? .macOS : .permission)
+        model.page = page ?? (TilingPrerequisite.missing == nil ? .macOS : .permission)
         DockPresence.show(window)
         refresh?.invalidate()
         refresh = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [model] _ in
@@ -65,6 +66,7 @@ final class Welcome {
 
     var page = Page.permission
     var trusted = AXIsProcessTrusted()
+    var eulaAccepted = EULA.isAccepted()
     var checks: [SetupCheck] = []
     let settings: () -> SpacetileCore.Settings
     var close: () -> Void = {}
@@ -86,7 +88,14 @@ final class Welcome {
 
     func refresh() {
         trusted = AXIsProcessTrusted()
+        eulaAccepted = EULA.isAccepted()
         checks = SetupCheck.all(spaceCount: Spaces.mostDesktops).filter { $0.id != SetupCheck.accessibilityID }
+    }
+
+    /// Going on from the first page agrees to the EULA; tiling waits for it.
+    func acceptEULA() {
+        if !eulaAccepted { EULA.accept() }
+        eulaAccepted = true
     }
 
     /// Adds Spacetile to the Accessibility list with the system prompt, and opens the pane where the switch is.
@@ -131,11 +140,21 @@ struct WelcomeView: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
+            Text(LocalizedStringKey("By continuing you agree to the [End User Licence Agreement](\(EULA.url.absoluteString))."))
+                .font(.callout)
             footer {
                 if model.trusted {
-                    Button("Continue") { model.page = .macOS }.keyboardShortcut(.defaultAction)
+                    Button("Continue") {
+                        model.acceptEULA()
+                        model.page = .macOS
+                    }
+                    .keyboardShortcut(.defaultAction)
                 } else {
-                    Button("Open Accessibility Settings…") { model.requestAccess() }.keyboardShortcut(.defaultAction)
+                    Button("Open Accessibility Settings…") {
+                        model.acceptEULA()
+                        model.requestAccess()
+                    }
+                    .keyboardShortcut(.defaultAction)
                 }
             }
         }
@@ -238,10 +257,11 @@ struct WelcomeView: View {
         }
     }
 
-    /// Skip on the left, the page's next step on the right.
+    /// Skip on the left, the page's next step on the right. The first page has no Skip until the
+    /// EULA is agreed to, as skipping it would leave Spacetile waiting.
     private func footer<Next: View>(@ViewBuilder next: () -> Next) -> some View {
         HStack {
-            if model.page != .keys {
+            if model.page != .keys, model.page != .permission || model.eulaAccepted {
                 Button("Skip") { model.close() }
                     .help(model.trusted ? "Close this guide" : "Close this guide; Spacetile starts as soon as Accessibility is on")
             }

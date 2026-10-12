@@ -33,13 +33,13 @@ struct LicenceTab: View {
                 case .updateWindowEnded(let licenceKey):
                     LabeledContent("Licensed to", value: licenceKey.email)
                     if Licence.gated {
-                        note("The update window ended on \(Licence.day(licenceKey.updateWindowEnd)), before this version was released. Renew to use it, or use an earlier version.")
+                        note("The update window ended on \(Licence.day(licenceKey.updateWindowEnd)). \(Licence.needs(licence.coverage)) Renew to use it, or use an earlier version.")
                     }
                 }
                 switch licence.checkout {
                 case .buy?:
                     HStack {
-                        Text("A Licence is £20 and covers every release in the 12 months after you buy it. Lifetime supporter is £40 and covers every future release.")
+                        Text("A Licence is £20 and covers every version released in the 12 months after you buy it, with every fix to those versions. Security fixes are free for every Licence. Lifetime supporter is £40 and covers every future release. Prices include VAT.")
                             .font(.caption).foregroundStyle(.secondary)
                         Spacer()
                         Button("Buy a Licence…") { licence.openCheckout() }

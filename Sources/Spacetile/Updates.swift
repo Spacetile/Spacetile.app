@@ -28,8 +28,8 @@ enum Channel: String, CaseIterable, Identifiable {
 /// Sparkle 2, checking the appcast in Info.plist's SUFeedURL (set by scripts/bundle.sh) for the
 /// Channel picked in Settings. The rest of the app only sees `check`, so Sparkle stays in this file.
 ///
-/// Each release is judged by the Licence (`Licence.offer`, `Licence.mayTake`) on its appcast
-/// publish date, the same way on every Channel. One the install may not take never reaches
+/// Each release is judged by the Licence (`Licence.offer`, `Licence.mayTake`) on its coverage
+/// (`coverage(of:)`), the same way on every Channel. One the install may not take never reaches
 /// Sparkle's install window: the check ends quietly and Spacetile shows it marked "Renew to
 /// install", with a Renew button in place of Install.
 final class Updates: NSObject, SPUUpdaterDelegate {
@@ -62,8 +62,16 @@ final class Updates: NSObject, SPUUpdaterDelegate {
     /// Read on every check, so a new Channel applies from the next one.
     func allowedChannels(for updater: SPUUpdater) -> Set<String> { Channel.current.appcastChannels }
 
-    /// The newest release the Licence covers, so an older release inside the update window still
-    /// installs when a newer one is outside it. When it covers none, the newest, which
+    /// The coverage the release pipeline wrote into the item's spacetileCoverage element, the same
+    /// value as in that build's Info.plist. Items from before it have none and count from their
+    /// publish date. Sparkle keeps elements it doesn't know in `propertiesDictionary`, keyed by name.
+    static func coverage(of item: SUAppcastItem) -> Coverage? {
+        (item.propertiesDictionary["spacetileCoverage"] as? String).flatMap { Coverage(text: $0) }
+            ?? item.date.map { .windowOpenOn($0) }
+    }
+
+    /// The newest release the Licence covers, so an older release it covers still installs when a
+    /// newer one needs a Renewal. When it covers none, the newest, which
     /// `shouldProceedWithUpdate` then turns into "Renew to install". Sparkle has already dropped
     /// the items for other Channels and other macOS versions.
     func bestValidUpdate(in appcast: SUAppcast, for updater: SPUUpdater) -> SUAppcastItem? {
@@ -72,7 +80,7 @@ final class Updates: NSObject, SPUUpdaterDelegate {
         let newer = appcast.items
             .filter { versions.compareVersion(running, toVersion: $0.versionString) == .orderedAscending }
             .sorted { versions.compareVersion($0.versionString, toVersion: $1.versionString) == .orderedDescending }
-        switch licence.offer(newer, published: { $0.date }) {
+        switch licence.offer(newer, coverage: Self.coverage(of:)) {
         case .install(let item)?, .renewToInstall(let item)?: return item
         // Nothing newer: Sparkle reports that it's up to date
         case nil: return nil
@@ -84,7 +92,7 @@ final class Updates: NSObject, SPUUpdaterDelegate {
     /// (SPUUIBasedUpdateDriver.m, `_abortUpdateWithError:showErrorToUser:`); the release is shown
     /// when the check ends.
     func updater(_ updater: SPUUpdater, shouldProceedWithUpdate updateItem: SUAppcastItem, updateCheck: SPUUpdateCheck) throws {
-        guard !licence.mayTake(releaseDated: updateItem.date) else { return }
+        guard !licence.mayTake(Self.coverage(of: updateItem)) else { return }
         renewToInstall = updateItem
         throw NSError(domain: SUSparkleErrorDomain, code: Int(SUError.installationCanceledError.rawValue), userInfo: [
             NSLocalizedDescriptionKey: "Spacetile \(updateItem.displayVersionString) needs a Renewal to install.",
@@ -115,14 +123,13 @@ final class Updates: NSObject, SPUUpdaterDelegate {
         guard let checkout = licence.checkout else { return }
         let alert = NSAlert()
         alert.messageText = "Spacetile \(item.displayVersionString) is available: Renew to install"
-        let released = item.date.map { " came out on \(Licence.day($0)), and" } ?? ""
         switch checkout {
         case .renew:
-            let windowEnd = licence.state.licence.map { ", which ended on \(Licence.day($0.updateWindowEnd))" } ?? ""
-            alert.informativeText = "This release\(released) is outside your Licence's update window\(windowEnd). Renew your Licence to install it. The version you have keeps working."
+            let windowEnd = licence.state.licence.map { " ended on \(Licence.day($0.updateWindowEnd))" } ?? " has ended"
+            alert.informativeText = "Your Licence's update window\(windowEnd). \(Licence.needs(Self.coverage(of: item))) Renew your Licence to install it. The version you have keeps working."
             alert.addButton(withTitle: "Renew Licence…")
         case .buy:
-            alert.informativeText = "This release\(released) needs a Licence to install."
+            alert.informativeText = "This release needs a Licence to install."
             alert.addButton(withTitle: "Buy a Licence…")
         }
         alert.addButton(withTitle: "Not Now")
@@ -132,11 +139,15 @@ final class Updates: NSObject, SPUUpdaterDelegate {
     }
 }
 
-/// Settings → General: the Channel, the running version, so bug reports can name both, and a check on
-/// demand.
+/// Settings → General: the Channel, the running version, so bug reports can name both, a check on
+/// demand, and the licence notices bundle.sh collects (absent from unbundled builds).
 struct UpdatesSection: View {
     let check: () -> Void
     @AppStorage(Channel.key) private var channel = Channel.stable
+    @State private var showingAcknowledgements = false
+    // Shown in a sheet rather than opened in TextEdit, which could save edits into the signed bundle
+    private let acknowledgements = Bundle.main.url(forResource: "Acknowledgements", withExtension: "txt")
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
     private let version = {
         let info = Bundle.main.infoDictionary ?? [:]
         guard let short = info["CFBundleShortVersionString"] as? String, let build = info["CFBundleVersion"] as? String else {
@@ -151,5 +162,22 @@ struct UpdatesSection: View {
         }
         LabeledContent("Version", value: version)
         Button("Check for Updates…", action: check)
+        if let acknowledgements {
+            Button("Acknowledgements…") { showingAcknowledgements = true }
+                .sheet(isPresented: $showingAcknowledgements) {
+                    VStack(alignment: .trailing) {
+                        ScrollView {
+                            Text(acknowledgements)
+                                .font(.callout.monospaced())
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        Button("Done") { showingAcknowledgements = false }
+                            .keyboardShortcut(.defaultAction)
+                    }
+                    .padding()
+                    .frame(width: 600, height: 480)
+                }
+        }
     }
 }
