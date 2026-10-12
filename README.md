@@ -2,7 +2,13 @@
 
 A window manager that works with your Mac. Spacetile tiles windows on the native Spaces you create in Mission Control, and keeps the drag and resize gestures you already know.
 
-Get it and read the docs at [spacetile.app](https://spacetile.app/docs/).
+## Install
+
+```bash
+brew install --cask spacetile/tap/spacetile
+```
+
+Or download the signed, notarized DMG from [spacetile.app](https://spacetile.app/#download). The docs are at [spacetile.app/docs](https://spacetile.app/docs/).
 
 ## Source-available
 
@@ -26,7 +32,3 @@ open build/Spacetile.app
 ## Support
 
 [Open an issue](https://github.com/Spacetile/Spacetile.app/issues/new/choose) to report a bug or ask a question.
-
-## Pull requests
-
-Pull requests aren't accepted yet. Any opened will be closed.
