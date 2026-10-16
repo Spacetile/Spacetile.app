@@ -2,7 +2,10 @@
 # Builds build/Spacetile.app and signs it.
 # Usage: bundle.sh [--dev] [--install] | --release <version> --coverage <yyyy-mm-dd|any> --revocations <file>
 # `--dev` compiles out the Trial and Licence check, and compiles in the development aids that
-# `spacetile-ctl` can send (see https://spacetile.app/docs/build/#developer-commands). Every other
+# `spacetile-ctl` can send (see https://spacetile.app/docs/build/#developer-commands). It builds
+# build/Spacetile Dev.app, a separate app (com.kodehort.spacetile.dev) with its own Accessibility
+# grant, no updater feed and no spacetile:// links, so it can stand in for an installed release
+# without taking over the release's grant. Every other
 # build, the default one included, has the check, except releases numbered below 1.0.0 (the free
 # public beta; SpacetileCore's LicenceGate).
 # By default signs with the first "Apple Development" identity so the Accessibility grant survives
@@ -17,12 +20,15 @@
 # message names versions that agree with each other. Sparkle compares the build number, a timestamp.
 # `--install` then quits Spacetile, replaces /Applications/Spacetile.app with the build and opens it,
 # so the Install Command button works (it needs the app in Applications). It replaces a release
-# install too; reinstall the DMG to go back.
+# install too; reinstall the DMG to go back. With `--dev` it installs /Applications/Spacetile Dev.app
+# instead and leaves the release alone.
 # Every build embeds Sparkle and its feed; only release builds check for updates on their own, so a
 # self-built copy isn't swapped for a download that lacks its Accessibility grant.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 FLAGS=()
+ID=com.kodehort.spacetile
+NAME=Spacetile
 TAG=$(git describe --tags --match 'app-v*' --abbrev=0 2>/dev/null || echo app-v0.0.0)
 VERSION=${TAG#app-v}-local
 RELEASE=false
@@ -31,7 +37,7 @@ COVERAGE=
 INSTALL=false
 while (($#)); do
   case $1 in
-    --dev) FLAGS=(-Xswiftc -DSPACETILE_DEV) ;;
+    --dev) FLAGS=(-Xswiftc -DSPACETILE_DEV) ID=$ID.dev NAME="Spacetile Dev" ;;
     --install) INSTALL=true ;;
     --release) RELEASE=true VERSION=${2:?--release needs a version}; shift ;;
     --coverage) COVERAGE=${2:?--coverage needs a value}; shift ;;
@@ -66,7 +72,7 @@ if [[ -n $REVOCATIONS && ! -s $REVOCATIONS ]]; then
   exit 2
 fi
 swift build -c release --product Spacetile ${FLAGS[@]+"${FLAGS[@]}"}
-APP=build/Spacetile.app
+APP="build/$NAME.app"
 /bin/rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 BIN=$(swift build -c release --show-bin-path)
@@ -80,8 +86,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>com.kodehort.spacetile</string>
-<key>CFBundleName</key><string>Spacetile</string>
+<key>CFBundleIdentifier</key><string>$ID</string>
+<key>CFBundleName</key><string>$NAME</string>
 <key>CFBundleExecutable</key><string>Spacetile</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$VERSION</string>
@@ -91,15 +97,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>LSUIElement</key><true/>
 <key>LSMultipleInstancesProhibited</key><true/>
 <key>LSMinimumSystemVersion</key><string>26.0</string>
-<key>CFBundleURLTypes</key><array><dict>
-  <key>CFBundleURLName</key><string>com.kodehort.spacetile.activate</string>
-  <key>CFBundleURLSchemes</key><array><string>spacetile</string></array>
-</dict></array>
-<key>SUFeedURL</key><string>https://updates.spacetile.app/appcast.xml</string>
-<key>SUPublicEDKey</key><string>HAb+9WQjPD1JH3e6OoxSiAr5PXHSfB1PBa8vhWE/H3U=</string>
-<key>SUEnableAutomaticChecks</key><$RELEASE/>
 </dict></plist>
 PLIST
+# Activation links and updates belong to the real app: a dev copy updated to a download would lose
+# its Accessibility grant, and it mustn't take spacetile:// links from the release
+if [[ $ID != *.dev ]]; then
+  plutil -insert CFBundleURLTypes -json '[{"CFBundleURLName": "com.kodehort.spacetile.activate", "CFBundleURLSchemes": ["spacetile"]}]' "$APP/Contents/Info.plist"
+  plutil -insert SUFeedURL -string https://updates.spacetile.app/appcast.xml "$APP/Contents/Info.plist"
+  plutil -insert SUPublicEDKey -string HAb+9WQjPD1JH3e6OoxSiAr5PXHSfB1PBa8vhWE/H3U= "$APP/Contents/Info.plist"
+  plutil -insert SUEnableAutomaticChecks -bool "$RELEASE" "$APP/Contents/Info.plist"
+fi
 if $RELEASE; then
   plutil -insert SpacetileReleaseDate -string "$(date -u +%Y-%m-%d)" "$APP/Contents/Info.plist"
   plutil -insert SpacetileCoverage -string "$COVERAGE" "$APP/Contents/Info.plist"
@@ -168,13 +175,14 @@ fi
 for code in "$SPARKLE/Versions/B/Autoupdate" "$SPARKLE/Versions/B/Updater.app" "$SPARKLE"; do
   codesign --force "${SIGN[@]}" "$code"
 done
-codesign --force "${SIGN[@]}" --identifier com.kodehort.spacetile "$APP"
+codesign --force "${SIGN[@]}" --identifier "$ID" "$APP"
 codesign -d -r- "$APP" 2>&1 | rg designated
 
 if $INSTALL; then
+  # Both copies' executables are called Spacetile, so this quits whichever is running
   if pkill -x Spacetile; then while pgrep -x Spacetile >/dev/null; do sleep 0.2; done; fi
-  /bin/rm -rf /Applications/Spacetile.app
-  ditto "$APP" /Applications/Spacetile.app
-  open /Applications/Spacetile.app
-  echo "Installed /Applications/Spacetile.app"
+  /bin/rm -rf "/Applications/$NAME.app"
+  ditto "$APP" "/Applications/$NAME.app"
+  open "/Applications/$NAME.app"
+  echo "Installed /Applications/$NAME.app"
 fi

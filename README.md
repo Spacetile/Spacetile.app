@@ -24,10 +24,10 @@ You need macOS 26 or later, Xcode 26 or later and [ripgrep](https://github.com/B
 swift build
 swift test
 scripts/bundle.sh --dev
-open build/Spacetile.app
+open "build/Spacetile Dev.app"
 ```
 
-`scripts/bundle.sh` builds the release binary, wraps it in `build/Spacetile.app` and signs it with your first "Apple Development" identity, or ad hoc if you have none. Add `--install` to replace `/Applications/Spacetile.app` with the build and open it there, which the Install Command button needs. [Build from source](https://spacetile.app/docs/build/) covers signing, permissions and the `--dev` aids.
+`scripts/bundle.sh` builds the release binary, wraps it in `build/Spacetile.app` and signs it with your first "Apple Development" identity, or ad hoc if you have none. `--dev` makes `build/Spacetile Dev.app` instead, a separate app with its own Accessibility permission, so it can sit beside a downloaded Spacetile; opening one quits the other. Add `--install` to put the build in Applications and open it there, which the Install Command button needs. [Build from source](https://spacetile.app/docs/build/) covers signing, permissions and the `--dev` aids.
 
 ## Support
 

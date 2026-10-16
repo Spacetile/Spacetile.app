@@ -275,8 +275,13 @@ final class Mouse {
         hovered = window?.id
         hoverWork?.cancel()
         guard let window else { return }
+        // Waiting, the pointer can stop over something else without a move event (mouse follows
+        // focus warps it), and a key or ⌘⇥ can move focus; either outranks the hover
+        let focused = manager.focusedWindowID
         let work = DispatchWorkItem { [weak self] in
-            guard let self, drag == nil, hovered == window.id, !manager.isPaused else { return }
+            guard let self, manager.focusFollowsMouse, drag == nil, hovered == window.id, !manager.isPaused,
+                  let pointer = CGEvent(source: nil)?.location, manager.window(at: pointer)?.id == window.id,
+                  manager.focusedWindowID == focused else { return }
             manager.focusUnderMouse(window)
         }
         hoverWork = work

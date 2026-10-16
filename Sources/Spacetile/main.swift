@@ -497,6 +497,36 @@ if let id = Bundle.main.bundleIdentifier,
     exit(0)
 }
 
+// The release and a development build (bundle.sh --dev) are separate apps, so each keeps its own
+// Accessibility grant. Opening one quits the other, which makes switching between them one step.
+// Only the copy opened last takes over, so two opened together (both login items, say) can't quit
+// each other; and one that won't quit is stopped, since two copies fight over every window
+let launched = NSRunningApplication.current.launchDate ?? .now
+let otherCopies = ["com.kodehort.spacetile", "com.kodehort.spacetile.dev"].filter { $0 != Bundle.main.bundleIdentifier }
+    .flatMap(NSRunningApplication.runningApplications(withBundleIdentifier:))
+if otherCopies.contains(where: { ($0.launchDate ?? .distantPast) > launched }) {
+    log.notice("another copy opened after this one takes over")
+    exit(0)
+}
+for other in otherCopies {
+    log.notice("quitting the other copy, \(other.bundleIdentifier ?? "?", privacy: .public)")
+    other.terminate()
+}
+let handOver = Date()
+while otherCopies.contains(where: { !$0.isTerminated }), Date().timeIntervalSince(handOver) < 5 {
+    RunLoop.current.run(until: .now + 0.1)
+}
+for other in otherCopies where !other.isTerminated {
+    log.error("the other copy didn't quit; stopping it")
+    other.forceTerminate()
+}
+
+// `kill` and `pkill` (bundle.sh --install) quit like the Quit command, so the session is saved
+signal(SIGTERM, SIG_IGN)
+let terminationSignal = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+terminationSignal.setEventHandler { NSApp.terminate(nil) }
+terminationSignal.resume()
+
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

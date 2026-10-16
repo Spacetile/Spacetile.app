@@ -45,6 +45,16 @@ final class WindowManager {
 
     private var windows: [WindowID: AXWindow] = [:]
     private var layouts: [Spaces.ID: SpaceLayout] = [:]
+    /// Set while tracking the windows already open on a Space shown for the first time since
+    /// launch, so nothing moves before the last session's layout is back.
+    private var launching = false
+    /// The last session's layouts for Spaces not shown since launch: macOS only lists a Space's
+    /// windows once it's shown. Saved on until then, so a relaunch before a visit keeps them.
+    private var pendingSession: [Spaces.ID: Session.Space] = [:]
+    /// Spaces whose layout is settled since launch: restored, kept as arranged, or left.
+    private var settledSpaces: Set<Spaces.ID> = []
+    /// The pending write of the session, replaced while layouts keep changing.
+    private var sessionSave: DispatchWorkItem?
     /// The tiled window new windows split beside. Only windows already in a tree are recorded, so a
     /// new window that grabs focus before its creation event arrives can't become its own anchor.
     private var lastFocusedTiled: [Spaces.ID: WindowID] = [:]
@@ -182,10 +192,61 @@ final class WindowManager {
                 MainActor.assumeIsolated { self.displaysChanged("woke") }
             }
         }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { self.saveSession() }
+        }
+        let session = SessionStore.load()
+        launching = true
         for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
             observe(app.processIdentifier, applyingRules: false)
         }
+        pendingSession = Dictionary((session?.spaces ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        settle(Array(layouts.keys) + Spaces.desktops.visible)
+        launching = false
+        for space in layouts.keys { apply(space) }
         spaceChanged()
+    }
+
+    /// Before a Space shown for the first time since launch is laid out: it goes back to the layout
+    /// Spacetile left it in, with the windows still open there. A Space the session can't speak for
+    /// keeps the arrangement its windows are in, when they tile it cleanly, rather than being
+    /// rebalanced.
+    private func settle(_ spaces: [Spaces.ID]) {
+        for space in spaces where settledSpaces.insert(space).inserted {
+            if let saved = pendingSession.removeValue(forKey: space),
+               let (layout, live) = saved.restorable(mode: spaceRules.layout(forSpace: Spaces.number(of: space)), isHere: { id, app in
+                   windows[id]?.bundleID == app && layouts[space]?.contains(id) == true
+               }, floats: { id in windows[id].map { floatRules.floats(app: $0.appName, title: $0.title) } == true }) {
+                restore(layout, on: space, live: live)
+            } else if adoptArrangement(on: space) {
+                log.notice("first shown: keeping the arrangement on desktop \(Spaces.number(of: space) ?? 0)")
+            }
+        }
+    }
+
+    /// Saves every layout a second after the last change, so a relaunch can put it back.
+    private func saveSessionSoon() {
+        sessionSave?.cancel()
+        let work = DispatchWorkItem { MainActor.assumeIsolated { self.saveSession() } }
+        sessionSave = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    private func saveSession() {
+        sessionSave?.cancel()
+        sessionSave = nil
+        let spaces = layouts.compactMap { space, layout -> Session.Space? in
+            let tracked = (layout.tree.windows + layout.floating).compactMap { id in windows[id].map { (id: id, app: $0.bundleID) } }
+            guard !tracked.isEmpty else { return nil }
+            let refs = SpacetileCore.WindowRef.assign(tracked)
+            let number = Spaces.number(of: space)
+            return Session.Space(id: space, layout: layout.snapshot(space: number ?? 0) { refs[$0] },
+                                 windows: Dictionary(uniqueKeysWithValues: refs.map { ($1, $0) }),
+                                 configuredMode: spaceRules.layout(forSpace: number))
+        }
+        let desktops = Spaces.desktops
+        let unvisited = pendingSession.values.filter { layouts[$0.id] == nil && desktops.display(of: $0.id) != nil }
+        SessionStore.save(Session(boot: SessionStore.boot, windowServer: SessionStore.windowServer, spaces: spaces + unvisited))
     }
 
     /// A display connected, disconnected or rearranged, or the Mac woke: macOS may have moved windows
@@ -482,12 +543,22 @@ final class WindowManager {
 
     // MARK: - Mouse
 
-    /// The window under `point` (AX coordinates) if Spacetile tracks it. The topmost window on any
-    /// layer decides: over a menu, popover, dialog or other untracked window this is nil, not the
-    /// tile behind it, so focus doesn't jump to that tile and close the menu.
+    /// The window under `point` (AX coordinates) if Spacetile tracks it. The topmost window decides:
+    /// over a dialog or another untracked window this is nil, not the tile behind it. So does a menu,
+    /// so focus doesn't jump to the tile behind it and close it: any app's menu, and the frontmost
+    /// app's popovers and panels above the normal layer. Other apps' windows there are overlays the
+    /// pointer goes through, such as Bartender's hover strip or a cursor highlighter.
     func window(at point: CGPoint) -> AXWindow? {
-        onScreenWindows().first { $0.bounds.contains(point) }.flatMap { windows[$0.id] }
+        let frontmost = Focus.frontmostPID
+        let menus = Int(CGWindowLevelForKey(.popUpMenuWindow))
+        return onScreenWindows().first { window in
+            window.bounds.contains(point) && (window.layer == 0 || window.layer == menus || window.pid == frontmost)
+        }.flatMap { windows[$0.id] }
     }
+
+    /// The window the frontmost app has focused, for focus follows mouse to tell whether something
+    /// else moved focus while it waited.
+    var focusedWindowID: WindowID? { focusedWindow()?.id }
 
     /// Tracked windows whose bounds, widened by `slack`, contain `point`, front to back. For edge
     /// grabs, which land in the gap between two windows.
@@ -497,14 +568,14 @@ final class WindowManager {
 
     /// Other apps' visible windows on screen, front to back. Spacetile's own border and shade sit
     /// among them, and the pointer goes through them, as it does through fully transparent overlays.
-    private func onScreenWindows() -> [(id: WindowID, layer: Int, bounds: CGRect)] {
+    private func onScreenWindows() -> [(id: WindowID, pid: pid_t, layer: Int, bounds: CGRect)] {
         let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
         return info.compactMap { entry in
-            guard entry[kCGWindowOwnerPID as String] as? pid_t != getpid(), entry[kCGWindowAlpha as String] as? Double ?? 1 > 0,
+            guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t, pid != getpid(), entry[kCGWindowAlpha as String] as? Double ?? 1 > 0,
                   let layer = entry[kCGWindowLayer as String] as? Int,
                   let id = entry[kCGWindowNumber as String] as? WindowID,
                   let bounds = (entry[kCGWindowBounds as String] as? NSDictionary).flatMap({ CGRect(dictionaryRepresentation: $0) }) else { return nil }
-            return (id, layer, bounds)
+            return (id, pid, layer, bounds)
         }
     }
 
@@ -1337,8 +1408,14 @@ final class WindowManager {
         }
         let kept = settleDisplayChange(desktops)
         reconcileSpaceMembership(keeping: kept)
+        let firstShown = desktops.visible.filter { !settledSpaces.contains($0) }
+        launching = !firstShown.isEmpty
         for pid in Set(NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }.map(\.processIdentifier)) {
             observe(pid, applyingRules: false)
+        }
+        if launching {
+            settle(firstShown)
+            launching = false
         }
         // A window leaving full screen can still report it while the Space slides back; look again
         let leaving = fullScreenPIDs.union(savedSlots.values.map(\.pid))
@@ -1505,7 +1582,8 @@ final class WindowManager {
     /// `learning` is off during a live drag so a neighbour can't stack mid-gesture.
     private func apply(_ space: Spaces.ID, skipping skipped: WindowID? = nil, learning: Bool = true) {
         if isPaused, space == Spaces.active { publishStatus() }
-        guard !isPaused, layouts[space] != nil else { return }
+        guard !launching, !isPaused, layouts[space] != nil else { return }
+        saveSessionSoon()
         let interval = signposter.beginInterval("Layout")
         defer { signposter.endInterval("Layout", interval) }
         let (bounds, spacing) = tileArea(for: space)
@@ -1642,19 +1720,25 @@ final class WindowManager {
     private func adoptOnScreen() {
         guard adoptsNativeTiling else { return }
         reconcileSpaceMembership()
-        for space in Spaces.desktops.visible {
-            guard var layout = layouts[space], layout.mode == .bsp else { continue }
-            let frames = Dictionary(layout.tree.windows.compactMap { id in windows[id]?.frame.map { (id, $0) } }, uniquingKeysWith: { a, _ in a })
-            guard frames.count > 1, NativeTiling.covers(Array(frames.values), visibleArea(for: space)),
-                  let arranged = NativeTiling.tree(from: frames) else { continue }
-            let before = layout.tree
-            layout.adopt(arranged)
-            guard layout.tree != before else { continue }
+        for space in Spaces.desktops.visible where adoptArrangement(on: space) {
             log.notice("resumed: keeping the arrangement on desktop \(Spaces.number(of: space) ?? 0)")
-            let (bounds, spacing) = tileArea(for: space)
-            layout.normalize(in: bounds, gap: spacing.gap, minimumSizes: minimumSizes)
-            layouts[space] = layout
         }
+    }
+
+    /// Rebuilds a Tile Space's tree from where its windows are, when they tile it cleanly. True if
+    /// the tree changed.
+    private func adoptArrangement(on space: Spaces.ID) -> Bool {
+        guard var layout = layouts[space], layout.mode == .bsp else { return false }
+        let frames = Dictionary(layout.tree.windows.compactMap { id in windows[id]?.frame.map { (id, $0) } }, uniquingKeysWith: { a, _ in a })
+        guard frames.count > 1, NativeTiling.covers(Array(frames.values), visibleArea(for: space)),
+              let arranged = NativeTiling.tree(from: frames) else { return false }
+        let before = layout.tree
+        layout.adopt(arranged)
+        guard layout.tree != before else { return false }
+        let (bounds, spacing) = tileArea(for: space)
+        layout.normalize(in: bounds, gap: spacing.gap, minimumSizes: minimumSizes)
+        layouts[space] = layout
+        return true
     }
 
     private func settleMovedWindows() {
