@@ -8,7 +8,7 @@ import SpacetileCore
 /// - fn + drag to the left or right screen edge sends the window to the previous or next Space.
 /// - A plain title-bar drag of a tiled window shows where it will land and re-tiles on drop.
 /// - A plain edge drag of a tiled window moves the split under that edge, live.
-/// - Focus follows mouse as soon as the pointer crosses into another window.
+/// - Focus follows mouse once the pointer rests on another window for the focus delay.
 ///
 /// The tap sits in front of every click, so a plain press does no work until it becomes a drag.
 final class Mouse {
@@ -38,6 +38,8 @@ final class Mouse {
     private var pointerDisplay: CGDirectDisplayID = 0
     private var drag: Drag?
     private var hovered: WindowID?
+    /// Focus waiting out the delay for the hovered window, cancelled if the pointer moves on first.
+    private var hoverWork: DispatchWorkItem?
     /// Called when macOS switches the tap off, e.g. because Accessibility was revoked.
     var onDisabled: () -> Void = {}
     /// Throttles hit-testing on mouse moves.
@@ -260,14 +262,23 @@ final class Mouse {
         if let drop = manager.dropHighlight(dragging: window.id, at: point) { overlay.show(drop.rect, as: drop.kind) } else { overlay.hide() }
     }
 
-    /// Focuses the window under the pointer when it changes, hit-testing at most every 16ms.
+    /// Focuses the window under the pointer once it has stayed there for the focus delay,
+    /// hit-testing at most every 16ms.
     private func focusFollowsMouse(at point: CGPoint) {
         guard manager.focusFollowsMouse, drag == nil, Date().timeIntervalSince(lastHitTest) > 0.016 else { return }
         lastHitTest = Date()
         let window = manager.window(at: point)
         guard window?.id != hovered else { return }
         hovered = window?.id
-        window.map(manager.focusUnderMouse)
+        hoverWork?.cancel()
+        guard let window else { return }
+        guard manager.hoverDelay > 0 else { return manager.focusUnderMouse(window) }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, drag == nil, hovered == window.id, !manager.isPaused else { return }
+            manager.focusUnderMouse(window)
+        }
+        hoverWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + manager.hoverDelay, execute: work)
     }
 }
 

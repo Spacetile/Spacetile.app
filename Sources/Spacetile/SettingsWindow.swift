@@ -325,6 +325,7 @@ enum DockPresence {
         switch pane {
         case .general:
             settings.focusFollowsMouse = defaults.focusFollowsMouse
+            settings.focusDelay = defaults.focusDelay
             settings.mouseFollowsFocus = defaults.mouseFollowsFocus
             settings.followAfterSending = defaults.followAfterSending
             settings.followRoutedWindows = defaults.followRoutedWindows
@@ -1262,6 +1263,9 @@ struct GeneralTab: View {
                 toggle("Focus follows mouse",
                        "Moving the pointer onto a window focuses it, without raising it above floating windows.",
                        \.focusFollowsMouse)
+                DragSlider(title: "Focus delay", value: Binding(get: { model.settings.hoverDelay * 1000 }, set: { model.settings.focusDelay = $0.rounded(); model.save() }),
+                              range: Settings.focusDelayRange, label: { "\(Int($0)) ms" })
+                    .disabled(!model.settings.focusFollowsMouse)
                 toggle("Mouse follows focus",
                        "Focusing a window with the keyboard moves the pointer to its centre, unless it's already inside.",
                        \.mouseFollowsFocus)
@@ -1310,14 +1314,14 @@ struct GeneralTab: View {
                             .labelsHidden()
                         }
                     }
-                    OpacitySlider(title: "Border opacity", value: Binding(get: { model.settings.activeBorderOpacity }, set: { model.settings.borderOpacity = $0; model.save() }),
+                    DragSlider(title: "Border opacity", value: Binding(get: { model.settings.activeBorderOpacity }, set: { model.settings.borderOpacity = $0; model.save() }),
                                   range: Settings.borderOpacityRange)
                 }
                 toggle("Dim other windows",
                        "Shade everything behind the focused window on its display. Clicks still go through to the windows underneath.",
                        Binding(get: { model.settings.dimsInactive }, set: { model.settings.dimInactive = $0; model.save() }))
                 if model.settings.dimsInactive {
-                    OpacitySlider(title: "Dimming", value: Binding(get: { model.settings.inactiveDimOpacity }, set: { model.settings.dimOpacity = $0; model.save() }),
+                    DragSlider(title: "Dimming", value: Binding(get: { model.settings.inactiveDimOpacity }, set: { model.settings.dimOpacity = $0; model.save() }),
                                   range: Settings.dimOpacityRange)
                 }
             } header: {
@@ -1410,11 +1414,13 @@ struct GeneralTab: View {
 
 /// An optional number: empty means automatic. Commits on Return or when focus leaves the field. Text
 /// that isn't a number in `range` is explained under the field and not saved.
-/// A percentage slider that saves once, when the drag ends, so a drag is one undo step.
-struct OpacitySlider: View {
+/// A slider, labelled as a percentage unless told otherwise, that saves once, when the drag ends,
+/// so a drag is one undo step.
+struct DragSlider: View {
     let title: String
     @Binding var value: Double
     let range: ClosedRange<Double>
+    var label: (Double) -> String = { $0.formatted(.percent.precision(.fractionLength(0))) }
     @State private var dragged: Double?
 
     var body: some View {
@@ -1423,8 +1429,8 @@ struct OpacitySlider: View {
                 Slider(value: Binding(get: { dragged ?? value }, set: { dragged = $0 }), in: range) { editing in
                     if !editing, let dragged { value = dragged; self.dragged = nil }
                 }
-                Text((dragged ?? value).formatted(.percent.precision(.fractionLength(0))))
-                    .monospacedDigit().frame(width: 40, alignment: .trailing)
+                Text(label(dragged ?? value))
+                    .monospacedDigit().frame(width: 52, alignment: .trailing)
             }
         }
     }

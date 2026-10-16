@@ -105,6 +105,7 @@ final class WindowManager {
     private var floatRules = FloatRules.default
     private var spaceRules = SpaceRules.default
     private(set) var focusFollowsMouse = true
+    private(set) var hoverDelay: TimeInterval = 0.15
     /// Supplies padding, gap and ratio, automatic unless config.json fixes them.
     private var spacingSettings = Settings.default
     /// How every Space tiles and stacks, from Settings.
@@ -206,6 +207,7 @@ final class WindowManager {
         floatRules = settings.floatRules
         spaceRules = settings.spaceRules
         focusFollowsMouse = settings.focusFollowsMouse
+        hoverDelay = settings.hoverDelay
         mouseFollowsFocus = settings.mouseFollowsFocus
         followsSends = settings.followsSends
         followsRouting = settings.followsRouting
@@ -482,8 +484,9 @@ final class WindowManager {
 
     // MARK: - Mouse
 
-    /// The window under `point` (AX coordinates) if Spacetile tracks it. The topmost normal window
-    /// decides: over a dialog or another untracked window this is nil, not the tile behind it.
+    /// The window under `point` (AX coordinates) if Spacetile tracks it. The topmost window on any
+    /// layer decides: over a menu, popover, dialog or other untracked window this is nil, not the
+    /// tile behind it, so focus doesn't jump to that tile and close the menu.
     func window(at point: CGPoint) -> AXWindow? {
         onScreenWindows().first { $0.bounds.contains(point) }.flatMap { windows[$0.id] }
     }
@@ -491,18 +494,19 @@ final class WindowManager {
     /// Tracked windows whose bounds, widened by `slack`, contain `point`, front to back. For edge
     /// grabs, which land in the gap between two windows.
     func windows(near point: CGPoint, slack: CGFloat) -> [AXWindow] {
-        onScreenWindows().filter { $0.bounds.insetBy(dx: -slack, dy: -slack).contains(point) }.compactMap { windows[$0.id] }
+        onScreenWindows().filter { $0.layer == 0 && $0.bounds.insetBy(dx: -slack, dy: -slack).contains(point) }.compactMap { windows[$0.id] }
     }
 
-    /// Other apps' normal-layer windows on screen, front to back. Spacetile's own border and shade
-    /// sit on that layer too, and the pointer goes through them.
-    private func onScreenWindows() -> [(id: WindowID, bounds: CGRect)] {
+    /// Other apps' visible windows on screen, front to back. Spacetile's own border and shade sit
+    /// among them, and the pointer goes through them, as it does through fully transparent overlays.
+    private func onScreenWindows() -> [(id: WindowID, layer: Int, bounds: CGRect)] {
         let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
         return info.compactMap { entry in
-            guard entry[kCGWindowLayer as String] as? Int == 0, entry[kCGWindowOwnerPID as String] as? pid_t != getpid(),
+            guard entry[kCGWindowOwnerPID as String] as? pid_t != getpid(), entry[kCGWindowAlpha as String] as? Double ?? 1 > 0,
+                  let layer = entry[kCGWindowLayer as String] as? Int,
                   let id = entry[kCGWindowNumber as String] as? WindowID,
                   let bounds = (entry[kCGWindowBounds as String] as? NSDictionary).flatMap({ CGRect(dictionaryRepresentation: $0) }) else { return nil }
-            return (id, bounds)
+            return (id, layer, bounds)
         }
     }
 
