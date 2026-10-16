@@ -557,8 +557,12 @@ final class WindowManager {
     }
 
     /// The window the frontmost app has focused, for focus follows mouse to tell whether something
-    /// else moved focus while it waited.
-    var focusedWindowID: WindowID? { focusedWindow()?.id }
+    /// else moved focus while it waited. Spacetile's own come from AppKit: asking Accessibility
+    /// about itself from the main thread can't be answered reliably.
+    var focusedWindowID: WindowID? {
+        guard Focus.frontmostPID == getpid() else { return focusedWindow()?.id }
+        return NSApp.keyWindow.flatMap { WindowID(exactly: $0.windowNumber) }
+    }
 
     /// Tracked windows whose bounds, widened by `slack`, contain `point`, front to back. For edge
     /// grabs, which land in the gap between two windows.
@@ -566,14 +570,17 @@ final class WindowManager {
         onScreenWindows().filter { $0.layer == 0 && $0.bounds.insetBy(dx: -slack, dy: -slack).contains(point) }.compactMap { windows[$0.id] }
     }
 
-    /// Other apps' visible windows on screen, front to back. Spacetile's own border and shade sit
-    /// among them, and the pointer goes through them, as it does through fully transparent overlays.
+    /// Visible windows on screen, front to back. The pointer goes through Spacetile's border, shade
+    /// and drop overlay, which ignore the mouse, as it does through fully transparent overlays; its
+    /// Settings, Profiles, Welcome and menu-bar windows count like any other app's.
     private func onScreenWindows() -> [(id: WindowID, pid: pid_t, layer: Int, bounds: CGRect)] {
         let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        // A window never shown has no window server number yet (-1)
+        let own = Set(NSApp.windows.filter { $0.isVisible && !$0.ignoresMouseEvents }.compactMap { WindowID(exactly: $0.windowNumber) })
         return info.compactMap { entry in
-            guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t, pid != getpid(), entry[kCGWindowAlpha as String] as? Double ?? 1 > 0,
+            guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t, entry[kCGWindowAlpha as String] as? Double ?? 1 > 0,
+                  let id = entry[kCGWindowNumber as String] as? WindowID, pid != getpid() || own.contains(id),
                   let layer = entry[kCGWindowLayer as String] as? Int,
-                  let id = entry[kCGWindowNumber as String] as? WindowID,
                   let bounds = (entry[kCGWindowBounds as String] as? NSDictionary).flatMap({ CGRect(dictionaryRepresentation: $0) }) else { return nil }
             return (id, pid, layer, bounds)
         }

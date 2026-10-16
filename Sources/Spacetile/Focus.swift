@@ -57,6 +57,18 @@ enum Focus {
         SLPSPostEventRecordTo(&psn, &bytes)
     }
 
+    /// Brings one of Spacetile's own windows to the front and makes it key. `NSApp.activate()` is
+    /// cooperative as well: opened by a hotkey, a command or the menu-bar panel, macOS ignored it and
+    /// left the window behind the frontmost app's.
+    static func bringForward(_ window: NSWindow) {
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        var psn = ProcessSerialNumber()
+        guard let id = UInt32(exactly: window.windowNumber), BSProcessForPID(getpid(), &psn) == noErr,
+              _SLPSSetFrontProcessWithOptions(&psn, id, userGenerated) == .success else { return }
+        makeKey(id, psn: &psn)
+    }
+
     /// The frontmost app's process ID from the window server, falling back to NSWorkspace.
     static var frontmostPID: pid_t? {
         var psn = ProcessSerialNumber()

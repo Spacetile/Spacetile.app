@@ -198,8 +198,10 @@ enum DockPresence {
             }
         }
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate()
         window.makeKeyAndOrderFront(nil)
+        // The policy change takes effect on the next pass of the run loop; activating before then
+        // can leave Spacetile behind the frontmost app
+        DispatchQueue.main.async { Focus.bringForward(window) }
     }
 
     private static func closed(_ id: ObjectIdentifier) {

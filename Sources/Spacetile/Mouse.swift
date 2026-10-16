@@ -31,9 +31,11 @@ final class Mouse {
     private let overlay = Overlay()
     private var tap: CFMachPort?
     private var tapSource: CFRunLoopSource?
-    /// Pointer moves come through a passive monitor, not the tap: the tap holds every event until
-    /// its handler returns, so focusing a slow app on hover would stall the cursor.
+    /// Pointer moves come through passive monitors, not the tap: the tap holds every event until
+    /// its handler returns, so focusing a slow app on hover would stall the cursor. The global one
+    /// only hears moves sent to other apps; the local one hears them while Spacetile is frontmost.
     private var moveMonitor: Any?
+    private var localMoveMonitor: Any?
     /// The display under the pointer, so crossing to another one refreshes the menu-bar item.
     private var pointerDisplay: CGDirectDisplayID = 0
     private var drag: Drag?
@@ -70,15 +72,20 @@ final class Mouse {
         tapSource = CFMachPortCreateRunLoopSource(nil, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), tapSource, .commonModes)
         moveMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
-            // CGEvent locations are top-left based, like the AX frames they're compared with
-            guard let point = event.cgEvent?.location else { return }
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.noteDisplay(at: point)
-                guard !self.manager.isPaused else { return }
-                self.focusFollowsMouse(at: point)
-            }
+            MainActor.assumeIsolated { self?.pointerMoved(event) }
         }
+        localMoveMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
+            self?.pointerMoved(event)
+            return event
+        }
+    }
+
+    private func pointerMoved(_ event: NSEvent) {
+        // CGEvent locations are top-left based, like the AX frames they're compared with
+        guard let point = event.cgEvent?.location else { return }
+        noteDisplay(at: point)
+        guard !manager.isPaused else { return }
+        focusFollowsMouse(at: point)
     }
 
     /// Removes the tap and the move monitor for good, so nothing stands between the user's input and
@@ -91,8 +98,9 @@ final class Mouse {
         if let tapSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), tapSource, .commonModes) }
         tap = nil
         tapSource = nil
-        moveMonitor.map(NSEvent.removeMonitor)
+        for monitor in [moveMonitor, localMoveMonitor].compactMap(\.self) { NSEvent.removeMonitor(monitor) }
         moveMonitor = nil
+        localMoveMonitor = nil
         drag = nil
     }
 
