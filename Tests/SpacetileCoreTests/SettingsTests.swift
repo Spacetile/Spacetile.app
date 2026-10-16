@@ -69,15 +69,6 @@ import Testing
         #expect(!decoded.followsRouting)
     }
 
-    @Test func focusDelayDefaultsTo150msAndStaysInRange() {
-        var settings = Settings.default
-        #expect(settings.hoverDelay == 0.15)
-        settings.focusDelay = 5000
-        #expect(settings.hoverDelay == 0.5)
-        settings.focusDelay = -10
-        #expect(settings.hoverDelay == 0)
-    }
-
     @Test func shortcutsStayOnUnlessTurnedOff() throws {
         #expect(Settings.default.usesShortcuts)
         var settings = Settings.default

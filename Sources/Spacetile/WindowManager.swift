@@ -105,7 +105,6 @@ final class WindowManager {
     private var floatRules = FloatRules.default
     private var spaceRules = SpaceRules.default
     private(set) var focusFollowsMouse = true
-    private(set) var hoverDelay: TimeInterval = 0.15
     /// Supplies padding, gap and ratio, automatic unless config.json fixes them.
     private var spacingSettings = Settings.default
     /// How every Space tiles and stacks, from Settings.
@@ -207,7 +206,6 @@ final class WindowManager {
         floatRules = settings.floatRules
         spaceRules = settings.spaceRules
         focusFollowsMouse = settings.focusFollowsMouse
-        hoverDelay = settings.hoverDelay
         mouseFollowsFocus = settings.mouseFollowsFocus
         followsSends = settings.followsSends
         followsRouting = settings.followsRouting

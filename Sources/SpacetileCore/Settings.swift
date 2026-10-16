@@ -11,9 +11,6 @@ public struct Settings: Codable, Equatable, Sendable {
     /// commands in another tool such as Raycast; `keys` is kept. Default on.
     public var shortcuts: Bool?
     public var focusFollowsMouse: Bool
-    /// Milliseconds the pointer rests on a window before focus follows it, so a pointer only
-    /// passing over a window on its way somewhere else leaves focus alone; nil means 150.
-    public var focusDelay: Double?
     public var mouseFollowsFocus: Bool
     /// Switch to the destination Space after sending a window there by key or edge drag. Default on.
     public var followAfterSending: Bool?
@@ -87,8 +84,6 @@ public struct Settings: Codable, Equatable, Sendable {
     }
 
     public var followsSends: Bool { followAfterSending ?? true }
-    /// `focusDelay` in seconds, within the range Settings offers.
-    public var hoverDelay: TimeInterval { (focusDelay ?? 150).clamped(to: Self.focusDelayRange) / 1000 }
     public var usesShortcuts: Bool { shortcuts ?? true }
     public var menuBarSettings: MenuBarSettings { menuBar ?? .default }
     public var followsRouting: Bool { followRoutedWindows ?? false }
@@ -111,8 +106,6 @@ public struct Settings: Codable, Equatable, Sendable {
     /// The opacities Settings offers; a border or shade fainter than these is hard to see at all.
     public static let borderOpacityRange = 0.1...1.0
     public static let dimOpacityRange = 0.05...0.9
-    /// The focus delays Settings offers, in milliseconds. Much past half a second feels broken.
-    public static let focusDelayRange = 0.0...500.0
 
     public func spacing(forDisplayWidth width: CGFloat) -> Spacing {
         var spacing = Spacing.forDisplay(width: width)
