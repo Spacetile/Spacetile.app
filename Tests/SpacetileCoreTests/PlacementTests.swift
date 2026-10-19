@@ -100,9 +100,33 @@ import Testing
         #expect(l.tree.holes.isEmpty)
         #expect(l.frames(in: screen, gap: 0)[2] == CGRect(x: 0, y: 250, width: 800, height: 250))
     }
+
+    @Test func draggingAnEdgeIntoAHoleClosesIt() {
+        var l = layout(1, 2)
+        l.place(1, in: .corner(vertical: .north, horizontal: .west), bounds: screen)
+        // Part way, the hole keeps what's left
+        l.moveEdge(.south, of: 1, by: 50, in: screen)
+        #expect(l.tree.holes.count == 1)
+        #expect(l.frames(in: screen, gap: 0)[1]?.height == 300)
+        // Past the smallest share, it gives the whole column up
+        l.moveEdge(.south, of: 1, by: 200, in: screen)
+        #expect(l.tree.holes.isEmpty)
+        #expect(l.frames(in: screen, gap: 0)[1] == CGRect(x: 0, y: 0, width: 400, height: 500))
+    }
 }
 
 @Suite struct GrowShrinkRestore {
+    @Test func growingIntoAHoleTakesItsSpace() {
+        var l = layout(1)
+        l.place(1, in: .edge(.north, fraction: nil), bounds: screen)
+        for _ in 0..<4 { l.resize(1, grow: true, in: screen) }
+        #expect(l.tree.holes.count == 1)
+        #expect(l.frames(in: screen, gap: 0)[1]?.height == 450)
+        l.resize(1, grow: true, in: screen)
+        #expect(l.tree.holes.isEmpty)
+        #expect(l.frames(in: screen, gap: 0)[1] == screen)
+    }
+
     @Test func growMovesEveryInnerBorderOutwards() {
         var l = layout(1, 2, 3)
         l.resize(2, grow: true, in: screen)

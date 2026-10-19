@@ -88,6 +88,24 @@ import Testing
         #expect(restored.waiting.isEmpty)
     }
 
+    @Test func resizingLeavesWaitingTilesInPlace() {
+        var restored = waitingForTwo()
+        restored.moveEdge(.east, of: 1, by: 400, in: screen)
+        #expect(restored.tree.holes.count == 2)
+        #expect(restored.frames(in: screen, gap: 0)[1]?.width == 720)
+    }
+
+    @Test func droppingIntoAWaitingTileStopsItWaiting() {
+        var restored = waitingForTwo()
+        // Reminders' tile, top right
+        let drop = restored.drop(1, at: CGPoint(x: 600, y: 125), in: screen, gap: 0)
+        restored.perform(drop!.action, dragging: 1, in: screen, gap: 0)
+        #expect(Set(restored.waiting.values) == ["calendar"])
+        // Reminders still gets a tile when it opens
+        restored.add(2, app: "reminders", beside: 1, in: screen)
+        #expect(restored.tree.windows.contains(2))
+    }
+
     @Test func otherAppsLeaveWaitingTilesAlone() {
         var restored = waitingForTwo()
         restored.add(9, app: "slack", beside: 1, in: screen)

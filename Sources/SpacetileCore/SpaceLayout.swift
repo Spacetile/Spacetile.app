@@ -377,7 +377,7 @@ public struct SpaceLayout: Equatable, Sendable {
     }
 
     public mutating func moveEdge(_ edge: Direction, of window: WindowID, by points: CGFloat, in bounds: CGRect) {
-        tree.moveEdge(edge, of: window, by: points, in: bounds)
+        tree.moveEdge(edge, of: window, by: points, in: bounds, keeping: Set(waiting.keys))
     }
 
     /// The tile under `point` and what dropping `window` there would do, with the rect to highlight.
@@ -404,6 +404,8 @@ public struct SpaceLayout: Equatable, Sendable {
         switch action {
         case .swap(let other):
             tree.swap(window, other)
+            // A profile's tile the window was dropped into no longer waits for its app
+            waiting[other] = nil
         case let .insert(target, side):
             removeTiled(window)
             tree.insert(window, beside: target, in: bounds, gap: gap, preselect: side)
@@ -411,7 +413,7 @@ public struct SpaceLayout: Equatable, Sendable {
     }
 
     public mutating func moveBorder(of window: WindowID, along axis: Axis, by points: CGFloat, in bounds: CGRect) {
-        tree.moveBorder(of: window, along: axis, by: points, in: bounds)
+        tree.moveBorder(of: window, along: axis, by: points, in: bounds, keeping: Set(waiting.keys))
     }
 
     public mutating func balance() { tree.balance() }

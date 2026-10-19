@@ -245,20 +245,27 @@ public struct BSPTree: Equatable, Sendable {
 
     /// Moves the nearest border of `window`'s tile that divides along `axis` by `points`
     /// (negative is west/north). The deepest enclosing split on that axis is used, whichever
-    /// side of it the window is on, so h/l always move the same vertical border.
-    public mutating func moveBorder(of window: WindowID, along axis: Axis, by points: CGFloat, in bounds: CGRect) {
+    /// side of it the window is on, so h/l always move the same vertical border. Holes pushed past
+    /// the smallest share close up, except those in `kept`.
+    public mutating func moveBorder(
+        of window: WindowID, along axis: Axis, by points: CGFloat, in bounds: CGRect, keeping kept: Set<WindowID> = []
+    ) {
         guard let root else { return }
-        self.root = Self.adjustingNearestSplit(containing: window, in: root, rect: bounds, where: { splitAxis, _ in splitAxis == axis }) { ratio, rect in
+        self.root = Self.adjustingNearestSplit(containing: window, in: root, rect: bounds, keeping: kept,
+                                               where: { splitAxis, _ in splitAxis == axis }) { ratio, rect in
             ratio + Double(points / rect.length(along: axis))
         }
     }
 
     /// Moves one specific edge of `window`'s tile by `points` (negative is west/north), as when the
-    /// user drags that edge with the mouse. Does nothing for an edge on the screen border.
-    public mutating func moveEdge(_ edge: Direction, of window: WindowID, by points: CGFloat, in bounds: CGRect) {
+    /// user drags that edge with the mouse. Does nothing for an edge on the screen border. Holes
+    /// pushed past the smallest share close up and the window takes their space, except those in `kept`.
+    public mutating func moveEdge(
+        _ edge: Direction, of window: WindowID, by points: CGFloat, in bounds: CGRect, keeping kept: Set<WindowID> = []
+    ) {
         guard let root else { return }
         // An east/south edge is the split line when the window sits in the first child, west/north in the second
-        self.root = Self.adjustingNearestSplit(containing: window, in: root, rect: bounds,
+        self.root = Self.adjustingNearestSplit(containing: window, in: root, rect: bounds, keeping: kept,
                                                where: { axis, inFirst in axis == edge.axis && inFirst != edge.isLeading }) { ratio, rect in
             ratio + Double(points / rect.length(along: edge.axis))
         }
@@ -452,9 +459,10 @@ public struct BSPTree: Equatable, Sendable {
     }
 
     /// Applies `adjust` to the deepest split holding `window` that `matches` its axis and whether
-    /// the window is in its first child.
+    /// the window is in its first child. A child of only holes (none of them in `kept`) pushed
+    /// past the smallest share closes up, so the window isn't held back by empty space.
     private static func adjustingNearestSplit(
-        containing window: WindowID, in node: Node, rect: CGRect,
+        containing window: WindowID, in node: Node, rect: CGRect, keeping kept: Set<WindowID>,
         where matches: (Axis, Bool) -> Bool, adjust: (Double, CGRect) -> Double
     ) -> Node {
         var adjusted = false
@@ -469,7 +477,12 @@ public struct BSPTree: Equatable, Sendable {
                 return .split(axis: nodeAxis, ratio: ratio, first: newFirst, second: newSecond)
             }
             adjusted = true
-            let newRatio = adjust(ratio, rect).clamped(to: ratioRange)
+            let wanted = adjust(ratio, rect)
+            let empty = { (node: Node) in leaves(node).allSatisfy { isHole($0) && !kept.contains($0) } }
+            // Allow for rounding: a tenth added four times to a half is a little over 0.9
+            if wanted > ratioRange.upperBound + 1e-9, empty(newSecond) { return newFirst }
+            if wanted < ratioRange.lowerBound - 1e-9, empty(newFirst) { return newSecond }
+            let newRatio = wanted.clamped(to: ratioRange)
             return .split(axis: nodeAxis, ratio: newRatio, first: newFirst, second: newSecond)
         }
         return walk(node, rect)

@@ -142,7 +142,7 @@ extension SpaceLayout {
             let outwards = edge.isLeading ? -step : step
             for share in [1.0, 0.5, 0.25] {
                 var moved = tree
-                moved.moveEdge(edge, of: window, by: (grow ? outwards : -outwards) * share, in: bounds)
+                moved.moveEdge(edge, of: window, by: (grow ? outwards : -outwards) * share, in: bounds, keeping: Set(waiting.keys))
                 if overflowed || !moved.overflows(in: bounds, gap: gap, minimumSizes: minimumSizes) {
                     tree = moved
                     break
