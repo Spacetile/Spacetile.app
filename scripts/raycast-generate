@@ -1,0 +1,10 @@
+#!/bin/bash
+# Regenerates the Raycast extension's commands from the app's catalogue (`KeyAction.sections`):
+# `spacetile-catalog` writes raycast/catalog.json and draws raycast/assets/regions/*.png, then
+# raycast-commands.mts writes one raycast/src/<name>.ts per command and the matching `commands` in
+# raycast/package.json. Run it after changing the catalogue and commit the results. Needs Swift and
+# Node 23.6 or later.
+set -euo pipefail
+root=$(cd "$(dirname "$0")/../.." && pwd)
+swift run --package-path "$root/app" spacetile-catalog "$root/raycast"
+node "$root/app/scripts/raycast-commands.mts" "$root/raycast"
