@@ -172,19 +172,58 @@ extension Spaces {
     /// steps are counted in that order. Both act on the display under the pointer, which isn't
     /// always the active one, so the pointer moves onto the target display first when it's elsewhere.
     static func switchTo(_ target: ID, then done: @escaping @MainActor () -> Void = {}) {
-        switchGeneration += 1
-        let generation = switchGeneration
         let guarded = !undoingBounce
         undoingBounce = false
+        guard !switching else {
+            // Only the latest waits; the one it replaces still calls `done`, as an overtaken switch always has
+            let replaced = waiting?.done
+            waiting = (target, guarded, done)
+            replaced?()
+            return
+        }
+        switching = true
+        let started = swipe(to: target, guarded: guarded) {
+            done()
+            DispatchQueue.main.asyncAfter(deadline: .now() + settle) { switchWaiting() }
+        }
+        if !started { switchWaiting() }
+    }
+
+    /// Whether a switch is still landing. On macOS 27 a swipe posted while the Dock is still taking
+    /// the last one can leave the screen black and the menu bar hidden for seconds, so a switch
+    /// asked for meanwhile waits for it to land, and counts its steps from where it landed.
+    private static var switching = false
+
+    /// The switch asked for while one was landing.
+    private static var waiting: (target: ID, guarded: Bool, done: @MainActor () -> Void)?
+
+    /// How long the Dock gets to finish a gesture after its Space shows, before the next swipe.
+    private static let settle: TimeInterval = 0.25
+
+    private static func switchWaiting() {
+        switching = false
+        guard let next = waiting else { return }
+        waiting = nil
+        undoingBounce = !next.guarded
+        switchTo(next.target, then: next.done)
+    }
+
+    /// Swipes to `target`, then calls `done`, unless `target` is gone, which returns false.
+    private static func swipe(to target: ID, guarded: Bool, then done: @escaping @MainActor () -> Void) -> Bool {
+        switchGeneration += 1
+        let generation = switchGeneration
         let desktops = desktops
-        guard let display = desktops.display(of: target), let signed = display.steps(to: target) else { return }
+        guard let display = desktops.display(of: target), let signed = display.steps(to: target) else { return false }
         let steps = abs(signed), right = signed > 0
         // Spaces spanning displays switch together, so the pointer can stay where it is
         let pointer = CGEvent(source: nil)?.location ?? .zero
         let otherDisplay = !desktops.spansDisplays && desktops.display(containing: pointer)?.id != display.id
         log.notice("switch \(display.name, privacy: .public) \(describe(display.current, on: display), privacy: .public) → \(describe(target, on: display), privacy: .public): \(steps) step(s) \(right ? "right" : "left", privacy: .public)\(otherDisplay ? ", moving the pointer there first" : "", privacy: .public)")
         if otherDisplay { CGWarpMouseCursorPosition(CGPoint(x: display.frame.midX, y: display.frame.midY)) }
-        guard steps > 0 else { return done() }
+        guard steps > 0 else {
+            done()
+            return true
+        }
         let interval = signposter.beginInterval("Switch Space")
         let done = {
             signposter.endInterval("Switch Space", interval)
@@ -202,6 +241,7 @@ extension Spaces {
             for _ in 0..<abs(remaining) { postSymbolicHotKey(remaining > 0 ? 81 : 79) }
             waitFor(target, timeout: 1) { _ in done() }
         }
+        return true
     }
 
     /// "desktop 2" or "full screen", for the log.
