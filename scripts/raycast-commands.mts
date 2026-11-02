@@ -1,4 +1,4 @@
-// Turns catalog.json (exported from the app by `spacetile-catalog`) into one no-view Raycast
+// Turns raycast-catalog.json (exported from the app by `spacetile-catalog`) into one no-view Raycast
 // command per Spacetile command in Settings → Keys, so each gets Raycast's alias and hotkey fields.
 // Run through `app/scripts/raycast-generate`; it lives outside raycast/ so the extension, which the
 // Raycast Store builds on its own, carries only the generated sources.
@@ -12,9 +12,9 @@ interface Entry {
   icon?: string;
 }
 
-const dir = process.argv[2];
-if (!dir) {
-  console.error("usage: node raycast-commands.mts <Raycast extension dir>");
+const [dir, catalogPath] = process.argv.slice(2);
+if (!dir || !catalogPath) {
+  console.error("usage: node raycast-commands.mts <Raycast extension dir> <catalog.json>");
   process.exit(64);
 }
 
@@ -22,16 +22,19 @@ if (!dir) {
 const manual = new Set(["run-command"]);
 const header = "// Generated from catalog.json by Spacetile's app/scripts/raycast-generate; don't edit.";
 
-/** Words Raycast's lint keeps lower case after the first word, even last. */
-const lowerAfterFirst = new Set(
+/** Minor words kept lower case, except as the first or last word. */
+const minorWords = new Set(
   "a an the and but or nor for yet so to as at by from in into of off on onto out over up with".split(" "),
 );
-/** The app's titles are sentence case; Raycast's lint wants title case, hyphenated parts included. */
+/**
+ * The app's titles are sentence case; the Store wants title case, hyphenated parts included. A
+ * trailing particle is capitalised, so "Pop out" becomes "Pop Out".
+ */
 const raycastTitle = (title: string) =>
   title
     .split(" ")
-    .map((word, i) =>
-      i > 0 && lowerAfterFirst.has(word.toLowerCase())
+    .map((word, i, words) =>
+      i > 0 && i < words.length - 1 && minorWords.has(word.toLowerCase())
         ? word.toLowerCase()
         : word.replace(
             /(^\P{L}*|[-/])(\p{Ll})/gu,
@@ -40,7 +43,7 @@ const raycastTitle = (title: string) =>
     )
     .join(" ");
 
-const sections: { title: string; actions: Entry[] }[] = JSON.parse(readFileSync(join(dir, "catalog.json"), "utf8"));
+const sections: { title: string; actions: Entry[] }[] = JSON.parse(readFileSync(catalogPath, "utf8"));
 const entries = sections.flatMap((section) => section.actions);
 
 const src = join(dir, "src");
@@ -68,4 +71,4 @@ manifest.commands = [
   })),
 ];
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-console.log(`${entries.length} commands from catalog.json`);
+console.log(`${entries.length} commands from ${catalogPath}`);

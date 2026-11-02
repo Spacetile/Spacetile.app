@@ -1,6 +1,7 @@
-// Exports the Keys catalogue for the Raycast extension: <dir>/catalog.json, plus
-// <dir>/assets/regions/<name>.png for each placement, drawn with the tiler's own geometry.
-// Usage: swift run spacetile-catalog <Raycast extension dir>
+// Exports the Keys catalogue for the Raycast extension: a catalog JSON file, which stays in this
+// repository as the generator's input, plus <dir>/assets/regions/<name>.png for each placement,
+// drawn with the tiler's own geometry.
+// Usage: swift run spacetile-catalog <Raycast extension dir> <catalog.json>
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -61,11 +62,12 @@ func drawRegion(_ region: Region, to url: URL) throws {
     guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
 }
 
-guard CommandLine.arguments.count == 2 else {
-    FileHandle.standardError.write(Data("usage: spacetile-catalog <Raycast extension dir>\n".utf8))
+guard CommandLine.arguments.count == 3 else {
+    FileHandle.standardError.write(Data("usage: spacetile-catalog <Raycast extension dir> <catalog.json>\n".utf8))
     exit(64)
 }
 let root = URL(filePath: CommandLine.arguments[1])
+let catalog = URL(filePath: CommandLine.arguments[2])
 let regions = root.appending(path: "assets/regions")
 try? FileManager.default.removeItem(at: regions)
 try FileManager.default.createDirectory(at: regions, withIntermediateDirectories: true)
@@ -88,4 +90,4 @@ let sections = [Section(title: "Spaces", actions: numbered)]
 
 let encoder = JSONEncoder()
 encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-try (encoder.encode(sections) + Data("\n".utf8)).write(to: root.appending(path: "catalog.json"))
+try (encoder.encode(sections) + Data("\n".utf8)).write(to: catalog)
