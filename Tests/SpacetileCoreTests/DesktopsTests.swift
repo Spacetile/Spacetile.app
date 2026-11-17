@@ -125,6 +125,26 @@ private let both = Desktops(displays: [studio, laptop], activeID: "S")
         #expect(assigned[twin.signature] == nil)
     }
 
+    /// Two monitors of one model reporting the same serial: each keeps its own Spaces.
+    @Test func twinsWithOneSerialEachGetTheirOwnDisplay() throws {
+        let zowie = DisplayIdentity(name: "ZOWIE RL LCD", vendor: 2513, model: 32533, serial: 21573)
+        let left = DisplaySpaces(id: "A", identity: zowie, frame: CGRect(x: -1920, y: 0, width: 1920, height: 1080), spaces: [20], current: 20)
+        let right = DisplaySpaces(id: "B", identity: zowie, frame: CGRect(x: 1512, y: 0, width: 1920, height: 1080), spaces: [30], current: 30)
+        let desktops = Desktops(displays: [right, laptop, left], activeID: "L")
+        let signatures = desktops.displays.map(\.identity.signature)
+        #expect(signatures == ["2513-32533-21573#1", laptop.identity.signature, "2513-32533-21573#2"])
+
+        let spaces = signatures.map { SpaceSnapshot(space: 1, mode: .bsp, tree: nil, floating: [], others: [], display: $0) }
+        let recorded = desktops.displays.map { ProfileDisplay(identity: $0.identity, frame: $0.frame, desktops: $0.spaces.count) }
+        let profile = Profile(name: "p", display: nil, displays: recorded, spaces: spaces)
+        #expect(desktops.place(profile).map(\.space) == [20, 1, 30])
+        #expect(desktops.matchesExactly(profile))
+
+        // Recorded numbers survive a save and load
+        let decoded = try JSONDecoder().decode([ProfileDisplay].self, from: JSONEncoder().encode(recorded))
+        #expect(decoded == recorded)
+    }
+
     @Test func olderProfilesNameTheirDisplays() {
         let space = SpaceSnapshot(space: 1, mode: .bsp, tree: nil, floating: [], others: [], display: "Studio Display")
         #expect(Profile(name: "p", display: nil, spaces: [space]).recordedDisplays == [DisplayIdentity(name: "Studio Display")])

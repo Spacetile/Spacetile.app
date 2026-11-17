@@ -90,7 +90,8 @@ enum Spaces {
 
     /// The connected screen with this UUID or display signature (a profile's displays carry those).
     static func screen(matching key: String) -> NSScreen? {
-        screen(id: key) ?? NSScreen.screens.first { identity(of: $0).signature == key }
+        // Through the Desktops, which number displays sharing a signature
+        screen(id: key) ?? (latest ?? desktops).displays.first { $0.identity.signature == key }.flatMap { screen(id: $0.id) }
     }
 
     private static func displayID(_ screen: NSScreen) -> CGDirectDisplayID {

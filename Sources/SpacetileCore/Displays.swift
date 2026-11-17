@@ -23,18 +23,25 @@ public struct DisplayIdentity: Codable, Hashable, Sendable {
     public var model: UInt32
     public var serial: UInt32
     public var builtIn: Bool
+    /// Its number among connected displays that are otherwise indistinguishable, in arrangement
+    /// order: some monitors of one model all report the same serial. Nil when it's the only one.
+    public var twin: Int?
 
-    public init(name: String, vendor: UInt32 = 0, model: UInt32 = 0, serial: UInt32 = 0, builtIn: Bool = false) {
+    public init(name: String, vendor: UInt32 = 0, model: UInt32 = 0, serial: UInt32 = 0, builtIn: Bool = false, twin: Int? = nil) {
         self.name = name
         self.vendor = vendor
         self.model = model
         self.serial = serial
         self.builtIn = builtIn
+        self.twin = twin
     }
 
-    /// `vendor-model-serial`, or the name for displays that report no serial. Profiles from before
-    /// signatures stored names, which this makes match as before.
-    public var signature: String { serial == 0 ? name : "\(vendor)-\(model)-\(serial)" }
+    /// `vendor-model-serial`, or the name for displays that report no serial, then `#twin` for one
+    /// of several alike. Profiles from before signatures stored names, which this makes match as before.
+    public var signature: String {
+        let base = serial == 0 ? name : "\(vendor)-\(model)-\(serial)"
+        return twin.map { "\(base)#\($0)" } ?? base
+    }
 }
 
 /// A display as a profile records it: who it is, where it sat and how many Desktops it had.
@@ -105,7 +112,7 @@ public struct FullScreenTiles: Equatable, Sendable {
 /// the one showing, and where the display sits in global (top-left) coordinates.
 public struct DisplaySpaces: Equatable, Sendable {
     public let id: String
-    public let identity: DisplayIdentity
+    public internal(set) var identity: DisplayIdentity
     public var name: String { identity.name }
     public let frame: CGRect
     /// Space IDs, Desktop 1 first. Full-screen app Spaces aren't Desktops and aren't listed.
@@ -175,7 +182,13 @@ public struct Desktops: Equatable, Sendable {
     public let spansDisplays: Bool
 
     public init(displays: [DisplaySpaces], activeID: String?, spansDisplays: Bool = false) {
-        self.displays = displays.sorted { ($0.frame.minX, $0.frame.minY) < ($1.frame.minX, $1.frame.minY) }
+        var sorted = displays.sorted { ($0.frame.minX, $0.frame.minY) < ($1.frame.minX, $1.frame.minY) }
+        // Displays sharing a signature are numbered, so each keeps its own Spaces in a profile
+        for index in sorted.indices { sorted[index].identity.twin = nil }
+        for twins in Dictionary(grouping: sorted.indices, by: { sorted[$0].identity.signature }).values where twins.count > 1 {
+            for (number, index) in twins.enumerated() { sorted[index].identity.twin = number + 1 }
+        }
+        self.displays = sorted
         active = self.displays.first { $0.id == activeID } ?? self.displays.first
         self.spansDisplays = spansDisplays
     }
