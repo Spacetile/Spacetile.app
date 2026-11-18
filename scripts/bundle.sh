@@ -12,8 +12,9 @@
 # rebuilds (TCC then checks the certificate, not the binary hash). Falls back to ad-hoc with a warning.
 # `--release` stamps the version, today's UTC release date (SpacetileReleaseDate) and the release's
 # coverage (SpacetileCoverage, from .github/scripts/coverage.sh: which Licences the licence check
-# accepts; its appcast item carries the same value), then signs with the first "Developer ID
-# Application" identity, hardened runtime and a secure timestamp, ready for notarization. No fallback.
+# accepts; its appcast item carries the same value), then signs with the "Developer ID
+# Application" identity (Kodehort Limited's if several), hardened runtime and a secure timestamp, ready
+# for notarization. No fallback.
 # `--revocations` embeds the licence service's list of revoked Licence IDs, which the release pipeline
 # fetches, as Contents/Resources/Revocations.json, so the build refuses those keys. Releases need it.
 # Other builds are versioned after the latest release tag, as `0.2.0-local`, so Sparkle's "up to date"
@@ -155,7 +156,12 @@ xcrun appintentsmetadataprocessor --output "$APP/Contents/Resources" \
 /bin/rm -rf "$WORK"
 
 if $RELEASE; then
-  IDENTITY=$(security find-identity -p codesigning -v | awk '/"Developer ID Application/ {print $2; exit}')
+  # Prefers Kodehort Limited's, so a keychain still holding the pre-company "Alistair Stead" cert
+  # doesn't pick that one
+  IDENTITY=$(security find-identity -p codesigning -v | awk '
+    /"Developer ID Application: Kodehort Limited/ { print $2; found = 1; exit }
+    /"Developer ID Application/ && !any { any = $2 }
+    END { if (!found && any) print any }')
   if [[ -z "$IDENTITY" ]]; then
     echo "error: no Developer ID Application identity; release builds can't fall back" >&2
     exit 1
