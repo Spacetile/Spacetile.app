@@ -258,7 +258,7 @@ private struct ProfileDetail: View {
             VStack(alignment: .leading, spacing: 20) {
                 header
                 desktops
-                SpaceDesigner(model: model, profile: profile, label: model.settings.spaceRules.labels[space.space],
+                SpaceDesigner(model: model, profile: profile, label: model.settings.spaceRules.label(forDesktop: space.space, on: spanning ? nil : display),
                               parts: parts, selected: display, select: { selectedDisplay = $0 })
                 whenApplied
             }
@@ -354,7 +354,7 @@ private struct ProfileDetail: View {
     /// A pill for every Desktop: filled with a window count when the profile arranges it, outlined
     /// with + when it doesn't. Drop an app from a tile onto one to move it there.
     private var spaceChips: some View {
-        let labels = model.settings.spaceRules.labels
+        let rules = model.settings.spaceRules
         return FlowLayout(spacing: 8) {
             ForEach(1...max(desktopCount, 1), id: \.self) { number in
                 let configured = arranges(number)
@@ -362,7 +362,7 @@ private struct ProfileDetail: View {
                 Button { selectedSpace = number } label: {
                     HStack(spacing: 5) {
                         if configured == nil { Image(systemName: "plus").font(.caption2.weight(.semibold)) }
-                        Text([String(number), labels[number]].compactMap { $0 }.joined(separator: " "))
+                        Text([String(number), rules.label(forDesktop: number, on: spanning ? nil : display)].compactMap { $0 }.joined(separator: " "))
                             .lineLimit(1).fixedSize()
                         let count = profile.spaces.filter { $0.space == number && (spanning || $0.display == display) }.flatMap(\.windows).count
                         if count > 0 { Text("\(count)").font(.caption2.weight(.semibold)).foregroundStyle(.secondary) }

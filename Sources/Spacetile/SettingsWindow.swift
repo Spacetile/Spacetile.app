@@ -272,6 +272,9 @@ enum DockPresence {
     var problemCount: Int { checks.filter { $0.state == .warning }.count }
     /// How many Spaces exist: settings only show these, keeping the rest stored.
     var spaceCount = 1
+    /// Displays with their own Desktops, to label a Desktop on one alone. Empty with one display, or
+    /// when Spaces span displays and share their labels.
+    var labelDisplays: [DisplaySpaces] = []
     /// Development aid (`spacetile-ctl spaces-override N`): pretend there are N Spaces.
     static var spaceCountOverride: Int?
 
@@ -303,6 +306,8 @@ enum DockPresence {
         error = config.error
         registrations = Dictionary(hotkeys.registrations.map { ($0.chord, $0) }, uniquingKeysWith: { a, _ in a })
         spaceCount = Self.spaceCountOverride ?? Spaces.mostDesktops
+        let desktops = Spaces.desktops
+        labelDisplays = desktops.spansDisplays || desktops.displays.count < 2 ? [] : desktops.displays
         checks = SetupCheck.all(spaceCount: spaceCount)
         (profiles, profileProblems) = ProfileStore.load()
         // Keeps the menu-bar item's profile icon and name in step with edits
@@ -1094,29 +1099,49 @@ struct SpacesTab: View {
     @Bindable var model: SettingsModel
     /// The Space whose label is being edited: leaving the field saves it, like Return does.
     @FocusState private var editing: Int?
+    /// The display whose own labels are being edited, by signature; nil edits the shared ones.
+    @State private var labelDisplay: String?
+
+    /// Twins share a name, so each gets its number in the arrangement.
+    private func name(of display: DisplaySpaces) -> String {
+        display.identity.twin.map { "\(display.name) \($0)" } ?? display.name
+    }
 
     var body: some View {
+        let chosen = model.labelDisplays.first { $0.identity.signature == labelDisplay }
+        let signature = chosen?.identity.signature
+        let count = chosen?.spaces.count ?? model.spaceCount
         Form {
-            Text("Desktops are numbered as Mission Control labels them, without full-screen apps, so each keeps its label and layout when a full-screen app opens before it. Layouts apply to Desktops laid out after the change: switch to one and use \(model.keyHint("layout stack")) (stack) or \(model.keyHint("layout bsp")) (tile) to change it now."
+            if !model.labelDisplays.isEmpty {
+                Picker("Labels for", selection: $labelDisplay) {
+                    Text("All displays").tag(String?.none)
+                    ForEach(model.labelDisplays, id: \.identity.signature) { Text(name(of: $0)).tag(Optional($0.identity.signature)) }
+                }
+            }
+            Text(chosen.map { "Labels here show only on \(name(of: $0)), in place of the ones for all displays. Leave one empty to use the label for all displays. Layouts apply on every display." }
+                 ?? "Desktops are numbered as Mission Control labels them, without full-screen apps, so each keeps its label and layout when a full-screen app opens before it. Layouts apply to Desktops laid out after the change: switch to one and use \(model.keyHint("layout stack")) (stack) or \(model.keyHint("layout bsp")) (tile) to change it now."
                  + (model.spaceCount < model.settings.spaces.count
                     ? " Showing your \(model.spaceCount) Desktop\(model.spaceCount == 1 ? "" : "s"); settings for the others are kept for when you add them in Mission Control."
                     : ""))
                 .font(.caption).foregroundStyle(.secondary)
             // A row for every Desktop that exists, whether or not config.json has an entry for it yet
-            ForEach(1...max(model.spaceCount, 1), id: \.self) { number in
+            ForEach(1...max(count, 1), id: \.self) { number in
+                let desktop = model.spaceSettings(number)
                 HStack {
                     Text("Desktop \(number)").frame(width: 80, alignment: .leading)
-                    TextField("Label", text: Binding(get: { model.spaceSettings(number).label ?? "" },
-                                                     set: { label in model.changeSpace(number) { $0.label = label.isEmpty ? nil : label } }),
-                              prompt: Text("No label"))
+                    TextField("Label", text: Binding(get: { (signature == nil ? desktop.label : signature.flatMap { desktop.displayLabels?[$0] }) ?? "" },
+                                                     set: { label in model.changeSpace(number) { $0.setLabel(label, on: signature) } }),
+                              prompt: Text(signature == nil ? "No label" : desktop.label ?? "No label"))
                         .labelsHidden()
                         .focused($editing, equals: number)
                         .onSubmit { model.save("Change Space Label") }
-                    LayoutModePicker(mode: Binding(get: { model.spaceSettings(number).layout ?? .bsp },
-                                                   set: { mode in
-                                                       model.changeSpace(number) { $0.layout = mode == .bsp ? nil : mode }
-                                                       model.save("Change Layout")
-                                                   }))
+                    if chosen == nil {
+                        LayoutModePicker(mode: Binding(get: { desktop.layout ?? .bsp },
+                                                       set: { mode in
+                                                           model.changeSpace(number) { $0.layout = mode == .bsp ? nil : mode }
+                                                           model.save("Change Layout")
+                                                       }))
+                    }
                 }
             }
             Section("Profiles") {
@@ -1131,6 +1156,10 @@ struct SpacesTab: View {
         .formStyle(.grouped)
         .safeAreaInset(edge: .bottom) { RestoreDefaultsBar { model.restoreDefaults(.spaces) } }
         .onChange(of: editing) { left, _ in if left != nil { model.save("Change Space Label") } }
+        // A display that went away hands the picker back to All displays, in view
+        .onChange(of: model.labelDisplays) { _, displays in
+            if !displays.contains(where: { $0.identity.signature == labelDisplay }) { labelDisplay = nil }
+        }
     }
 }
 

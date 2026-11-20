@@ -151,3 +151,48 @@ import Testing
         #expect(Settings.TitleRule(app: "Finder", title: "Copy|Info").matches(in: windows) == 2)
     }
 }
+
+@Suite struct DisplayLabels {
+    static let left = "1-2-3#1", right = "1-2-3#2"
+
+    static func rules(_ spaces: [Settings.SpaceSettings]) -> SpaceRules {
+        var settings = Settings.default
+        settings.spaces = spaces
+        return settings.spaceRules
+    }
+
+    @Test func aDisplaysOwnLabelShowsOnlyThere() {
+        var desktop = Settings.SpaceSettings(space: 1, label: "Code", layout: nil)
+        desktop.displayLabels = [Self.right: "Chat"]
+        let rules = Self.rules([desktop])
+        #expect(rules.label(forDesktop: 1, on: Self.right) == "Chat")
+        #expect(rules.label(forDesktop: 1, on: Self.left) == "Code")
+    }
+
+    @Test func spanningAndUnknownDisplaysShowTheSharedLabel() {
+        var desktop = Settings.SpaceSettings(space: 2, label: nil, layout: nil)
+        desktop.displayLabels = [Self.left: "Mail"]
+        let rules = Self.rules([desktop])
+        #expect(rules.label(forDesktop: 2, on: nil) == nil)
+        #expect(rules.label(forDesktop: 2, on: Self.right) == nil)
+        #expect(rules.label(forDesktop: nil, on: Self.left) == nil)
+    }
+
+    @Test func clearingADisplaysLabelFallsBackToTheSharedOne() {
+        var desktop = Settings.SpaceSettings(space: 1, label: nil, layout: nil)
+        desktop.setLabel("Code", on: nil)
+        desktop.setLabel("Chat", on: Self.right)
+        #expect(desktop.label == "Code")
+        #expect(desktop.displayLabels == [Self.right: "Chat"])
+        desktop.setLabel("", on: Self.right)
+        #expect(desktop.displayLabels == nil)
+        desktop.setLabel("", on: nil)
+        #expect(desktop.label == nil)
+    }
+
+    @Test func readsFromConfigJSON() throws {
+        let json = #"{"space": 1, "label": "Code", "displayLabels": {"1-2-3#2": "Chat"}}"#
+        let desktop = try JSONDecoder().decode(Settings.SpaceSettings.self, from: Data(json.utf8))
+        #expect(desktop.displayLabels == [Self.right: "Chat"])
+    }
+}

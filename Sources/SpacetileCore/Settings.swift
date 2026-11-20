@@ -73,13 +73,26 @@ public struct Settings: Codable, Equatable, Sendable {
 
     public struct SpaceSettings: Codable, Equatable, Sendable {
         public var space: Int
+        /// Shown on every display, except those with their own in `displayLabels`.
         public var label: String?
+        /// Display signature → this Desktop's label on that display.
+        public var displayLabels: [String: String]?
         public var layout: LayoutMode?
 
         public init(space: Int, label: String?, layout: LayoutMode?) {
             self.space = space
             self.label = label
             self.layout = layout
+        }
+
+        /// Sets the label on the display with signature `display`, or on every display when nil.
+        /// Empty clears it, so that display shows the shared label again.
+        public mutating func setLabel(_ text: String, on display: String?) {
+            let value = text.isEmpty ? nil : text
+            guard let display else { return label = value }
+            var labels = displayLabels ?? [:]
+            labels[display] = value
+            displayLabels = labels.isEmpty ? nil : labels
         }
     }
 
@@ -131,6 +144,7 @@ public struct Settings: Codable, Equatable, Sendable {
 
     public var spaceRules: SpaceRules {
         SpaceRules(labels: Dictionary(spaces.compactMap { d in d.label.map { (d.space, $0) } }, uniquingKeysWith: { a, _ in a }),
+                   displayLabels: Dictionary(spaces.compactMap { d in d.displayLabels.map { (d.space, $0) } }, uniquingKeysWith: { a, _ in a }),
                    layouts: Dictionary(spaces.compactMap { d in d.layout.map { (d.space, $0) } }, uniquingKeysWith: { a, _ in a }),
                    apps: appSpaces)
     }

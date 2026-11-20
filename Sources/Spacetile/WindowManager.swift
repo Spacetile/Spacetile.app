@@ -996,7 +996,7 @@ final class WindowManager {
                     return MiniSpace(id: space, number: position + 1, label: nil, isCurrent: space == first.current,
                                      windows: windows(on: space, in: area), isFullScreen: true)
                 }
-                return MiniSpace(id: space, number: position + 1, label: spaceRules.labels[index + 1],
+                return MiniSpace(id: space, number: position + 1, label: spaceRules.label(forDesktop: index + 1, on: nil),
                                  isCurrent: space == first.current,
                                  windows: desktops.displays.flatMap { windows(on: $0.spaces[index], in: area) },
                                  panelSpaces: desktops.displays.map { $0.spaces[index] })
@@ -1012,7 +1012,8 @@ final class WindowManager {
             // Full-screen apps' Spaces sit between the Desktops, as Mission Control shows them
             let spaces = display.order.enumerated().map { position, space -> MiniSpace in
                 let desktop = display.spaces.firstIndex(of: space).map { $0 + 1 }
-                return MiniSpace(id: space, number: position + 1, label: desktop.flatMap { spaceRules.labels[$0] }, isCurrent: space == display.current,
+                return MiniSpace(id: space, number: position + 1, label: spaceRules.label(forDesktop: desktop, on: display.identity.signature),
+                                 isCurrent: space == display.current,
                                  windows: windows(on: space, in: display.frame), isFullScreen: desktop == nil)
             }
             return MiniDisplay(id: display.id, name: display.name, frame: display.frame, aspect: display.frame.width / max(display.frame.height, 1),
@@ -1564,12 +1565,14 @@ final class WindowManager {
         let current = desktops.activeSpace ?? 0, order = desktops.active?.order ?? []
         // The menu bar numbers by position; the label and default mode belong to the Desktop
         let number = desktops.number(of: current)
+        // Spanning Desktops share one label across displays
+        let label = spaceRules.label(forDesktop: number, on: desktops.spansDisplays ? nil : desktops.active?.identity.signature)
         if Date().timeIntervalSince(occupancy.at) > 0.5 {
             let used = Set(allWindows().map(\.space))
             occupancy = (order.map(used.contains), Date())
         }
         let layout = layouts[current]
-        status = Status(space: desktops.position(of: current), label: number.flatMap { spaceRules.labels[$0] },
+        status = Status(space: desktops.position(of: current), label: label,
                         stacked: layout?.stackedOutOfSight ?? 0, total: order.count,
                         mode: layout?.mode ?? spaceRules.layout(forSpace: number),
                         windowCount: (layout?.tree.windows.count ?? 0) + (layout?.floating.count ?? 0),

@@ -80,12 +80,22 @@ public enum SettingToggle: String, CaseIterable, Sendable {
 
 /// Per-Space labels, layouts and app → Space rules.
 public struct SpaceRules: Sendable {
+    /// Desktop number → label on every display.
     public var labels: [Int: String]
+    /// Desktop number → display signature → label on that display, in place of `labels`.
+    public var displayLabels: [Int: [String: String]] = [:]
     public var layouts: [Int: LayoutMode]
     /// App name → Space number. Applies to windows created while Spacetile runs.
     public var apps: [String: Int]
 
     public func layout(forSpace number: Int?) -> LayoutMode { number.flatMap { layouts[$0] } ?? .bsp }
+
+    /// Desktop `number`'s label on the display with signature `display`, or the shared label when
+    /// that display has none or Spaces span displays (`display` nil).
+    public func label(forDesktop number: Int?, on display: String?) -> String? {
+        guard let number else { return nil }
+        return display.flatMap { displayLabels[number]?[$0] } ?? labels[number]
+    }
 
     /// None: every Desktop starts unlabelled in BSP, and new windows open where you are.
     public static let `default` = SpaceRules(labels: [:], layouts: [:], apps: [:])
