@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// Space IDs for one display's part of a Space shared by every display. Tagged with a high bit, so
 /// they can't be mistaken for the window server's own IDs, with the real Space and a stable display
@@ -422,5 +423,25 @@ public struct DepartedLayouts: Sendable {
             }
         }
         return returned
+    }
+}
+
+/// Windows macOS moves between Spaces after a wake or display change. It can gather a display's
+/// windows onto one Desktop well after the displays settle, which looks like the user moving them;
+/// for `window` seconds after the last change, Spacetile puts them back instead of adopting the move.
+public struct DisplayChangeMoves: Sendable {
+    /// Long enough for the moves logged 15 s after a wake.
+    public static let window: TimeInterval = 60
+    private var changed: Date?
+
+    public init() {}
+
+    public mutating func displaysChanged(at now: Date) { changed = now }
+
+    /// The Desktop to put a window back on that left `tracked`, or nil to let the move stand: it
+    /// came too long after a display change, or `tracked` isn't a Desktop any more.
+    public func home(for tracked: Int, in desktops: Desktops, at now: Date) -> Int? {
+        guard let changed, now.timeIntervalSince(changed) < Self.window, desktops.number(of: tracked) != nil else { return nil }
+        return tracked
     }
 }

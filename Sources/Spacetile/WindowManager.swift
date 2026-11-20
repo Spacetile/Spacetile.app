@@ -76,6 +76,7 @@ final class WindowManager {
     private var lastDesktops: Desktops?
     /// From a display change or wake until the displays settle.
     private var displaysUnsettled = false
+    private var displayChangeMoves = DisplayChangeMoves()
     /// Smallest sizes windows accepted, learned by reading frames back after each write.
     private var minimumSizes: MinimumSizes = [:]
     private var observers: [pid_t: AXObserver] = [:]
@@ -256,6 +257,7 @@ final class WindowManager {
     func displaysChanged(_ reason: String) {
         log.notice("\(reason, privacy: .public); laying out again once displays settle")
         displaysUnsettled = true
+        displayChangeMoves.displaysChanged(at: Date())
         displaySettle?.cancel()
         let work = DispatchWorkItem { MainActor.assumeIsolated { self.displaysSettled() } }
         displaySettle = work
@@ -1488,6 +1490,11 @@ final class WindowManager {
                     log.notice("window \(id) went full screen, no longer tiled")
                     if let pid = windows[id]?.pid, let slot = layout.slot(of: id) { savedSlots[id] = (pid, space, slot) }
                     untrack(id)
+                    continue
+                }
+                if let home = displayChangeMoves.home(for: space, in: desktops, at: Date()) {
+                    log.notice("window \(id) moved by macOS after a display change, back to desktop \(Spaces.number(of: home) ?? 0) from \(Spaces.number(of: actual) ?? 0)")
+                    Spaces.move(id, to: home)
                     continue
                 }
                 log.notice("window \(id) moved outside Spacetile to space \(Spaces.number(of: actual) ?? 0)")

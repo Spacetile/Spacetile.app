@@ -304,3 +304,31 @@ private let both = Desktops(displays: [studio, laptop], activeID: "S")
         #expect(departed.update(from: alone, to: both, layouts: [10: layout(5)]).isEmpty)
     }
 }
+
+/// macOS can gather a display's windows onto one Desktop some seconds after the Mac wakes.
+@Suite struct WakeMoves {
+    static let woke = Date(timeIntervalSinceReferenceDate: 0)
+
+    static func moves() -> DisplayChangeMoves {
+        var moves = DisplayChangeMoves()
+        moves.displaysChanged(at: woke)
+        return moves
+    }
+
+    @Test func aWindowMacOSMovedSoonAfterWakeGoesBack() {
+        #expect(Self.moves().home(for: 1, in: both, at: Self.woke + 20) == 1)
+    }
+
+    @Test func aMoveLongAfterWakeStands() {
+        #expect(Self.moves().home(for: 1, in: both, at: Self.woke + DisplayChangeMoves.window + 1) == nil)
+    }
+
+    @Test func aWindowWhoseDesktopIsGoneStaysWhereMacOSPutIt() {
+        let laptopOnly = Desktops(displays: [laptop], activeID: "L")
+        #expect(Self.moves().home(for: 10, in: laptopOnly, at: Self.woke + 5) == nil)
+    }
+
+    @Test func movesBeforeAnyDisplayChangeStand() {
+        #expect(DisplayChangeMoves().home(for: 1, in: both, at: Self.woke) == nil)
+    }
+}
