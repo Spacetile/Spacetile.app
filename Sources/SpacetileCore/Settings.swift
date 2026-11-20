@@ -197,7 +197,7 @@ public struct Settings: Codable, Equatable, Sendable {
         ]) { a, _ in a }
         let rules = SpaceRules.default
         return Settings(
-            keys: keys, focusFollowsMouse: true, mouseFollowsFocus: true,
+            keys: keys, focusFollowsMouse: false, mouseFollowsFocus: false,
             floatApps: FloatRules.default.apps.sorted(),
             floatTitles: FloatRules.default.titles.map { TitleRule(app: $0.app, title: $0.pattern) },
             spaces: (1...10).map { SpaceSettings(space: $0, label: rules.labels[$0], layout: rules.layouts[$0]) },

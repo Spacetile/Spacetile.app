@@ -115,13 +115,13 @@ final class WindowManager {
     private let highlight = FocusHighlight()
     private var floatRules = FloatRules.default
     private var spaceRules = SpaceRules.default
-    private(set) var focusFollowsMouse = true
+    private(set) var focusFollowsMouse = false
     /// Supplies padding, gap and ratio, automatic unless config.json fixes them.
     private var spacingSettings = Settings.default
     /// How every Space tiles and stacks, from Settings.
     private var tiling = TileAlgorithm.bsp
     private var stacking = StackAlgorithm.fill
-    private var mouseFollowsFocus = true
+    private var mouseFollowsFocus = false
     private var followsSends = true
     private var followsRouting = false
     var onStatusChange: (Status) -> Void = { _ in }
