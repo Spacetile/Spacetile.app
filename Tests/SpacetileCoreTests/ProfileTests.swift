@@ -163,3 +163,35 @@ import Testing
         #expect(profile.open == nil)
     }
 }
+
+/// An app's windows are told apart only by opening order, which changes when the app reopens them.
+@Suite struct MatchingWindowsInPlace {
+    static let first = WindowRef(app: "chrome", index: 0), second = WindowRef(app: "chrome", index: 1)
+    static let left = 1, right = 2, elsewhere = 3
+
+    static func match(_ windows: [(id: WindowID, app: String, space: Int)]) -> [WindowRef: WindowID] {
+        WindowRef.match([(first, left), (second, right)], to: windows)
+    }
+
+    @Test func windowsAlreadyInTheProfilesPlacesStay() {
+        let matched = Self.match([(5, "chrome", Self.right), (9, "chrome", Self.left)])
+        #expect(matched == [Self.first: 9, Self.second: 5])
+    }
+
+    @Test func windowsElsewhereGoInOpeningOrder() {
+        let matched = Self.match([(5, "chrome", Self.elsewhere), (9, "chrome", Self.elsewhere)])
+        #expect(matched == [Self.first: 5, Self.second: 9])
+    }
+
+    @Test func aWindowInPlaceKeepsItAndTheOtherTakesWhatsLeft() {
+        let matched = Self.match([(5, "chrome", Self.right), (9, "chrome", Self.elsewhere)])
+        #expect(matched == [Self.first: 9, Self.second: 5])
+    }
+
+    @Test func refsWithNoDesktopTakeTheWindowsLeftOver() {
+        let fullScreen = WindowRef(app: "chrome", index: 2)
+        let matched = WindowRef.match([(Self.first, Self.left), (fullScreen, nil)],
+                                      to: [(5, "chrome", Self.elsewhere), (9, "chrome", Self.left)])
+        #expect(matched == [Self.first: 9, fullScreen: 5])
+    }
+}

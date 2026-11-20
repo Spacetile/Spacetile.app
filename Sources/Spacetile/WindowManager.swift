@@ -1187,7 +1187,6 @@ final class WindowManager {
         let interval = signposter.beginInterval("Load profile")
         defer { signposter.endInterval("Load profile", interval) }
         let all = allWindows()
-        let live = liveRefs(all)
         let currentSpace = Dictionary(all.map { ($0.id, $0.space) }, uniquingKeysWith: { a, _ in a })
         // Each Space goes back to its display, or after the main display's own Desktops when its
         // display isn't connected, as macOS merges them; Spaces with no Desktop to go to are left
@@ -1196,6 +1195,9 @@ final class WindowManager {
             log.notice("profile \(profile.name, privacy: .public) desktop \(placement.snapshot.space): \(String(describing: placement.reason), privacy: .public), desktop \(placement.number) of \(placement.display?.name ?? "?", privacy: .public)")
         }
         let placed = placements.compactMap { placement in placement.space.map { (placement.snapshot, $0) } }
+        let live = SpacetileCore.WindowRef.match(placed.flatMap { snapshot, target in snapshot.windows.map { ($0, Optional(target)) } }
+                                                     + (profile.fullScreen ?? []).flatMap(\.windows).map { ($0, nil) },
+                                                 to: all)
         let unplaced = placements.filter { $0.space == nil }
         if !unplaced.isEmpty { onProfileWarning(profile, unplaced) }
         var touched = Set<Spaces.ID>()
@@ -1307,7 +1309,8 @@ final class WindowManager {
     }
 
     /// Each window's ref, keyed the other way round for resolving a profile.
-    /// The live window each profile reference stands for now, as applying a profile would match them.
+    /// The live window each profile reference stands for now, in opening order. Applying a profile
+    /// first keeps windows already where it puts them (`WindowRef.match`).
     func liveWindows() -> [SpacetileCore.WindowRef: WindowID] { liveRefs(allWindows()) }
 
     private func liveRefs(_ all: [(id: WindowID, app: String, space: Spaces.ID)]) -> [SpacetileCore.WindowRef: WindowID] {

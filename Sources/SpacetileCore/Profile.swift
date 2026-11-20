@@ -37,6 +37,26 @@ public struct WindowRef: Codable, Hashable, Sendable {
         }
         return refs
     }
+
+    /// The live window each of a profile's refs stands for. A window already on the Desktop a ref
+    /// of its app goes to takes that ref, so applying a profile again doesn't trade an app's windows
+    /// between Desktops when it has reopened them in another order; the rest pair up in opening
+    /// order. `space` is nil for a ref with no Desktop to go to.
+    public static func match(_ refs: [(ref: WindowRef, space: Int?)],
+                             to windows: [(id: WindowID, app: String, space: Int)]) -> [WindowRef: WindowID] {
+        var matched: [WindowRef: WindowID] = [:]
+        var left = windows.sorted { $0.id < $1.id }
+        let ordered = refs.sorted { ($0.ref.app, $0.ref.index) < ($1.ref.app, $1.ref.index) }
+        for (ref, space) in ordered {
+            guard let space, let at = left.firstIndex(where: { $0.app == ref.app && $0.space == space }) else { continue }
+            matched[ref] = left.remove(at: at).id
+        }
+        for (ref, _) in ordered where matched[ref] == nil {
+            guard let at = left.firstIndex(where: { $0.app == ref.app }) else { continue }
+            matched[ref] = left.remove(at: at).id
+        }
+        return matched
+    }
 }
 
 /// A layout tree with windows replaced by refs, so it can be saved and restored.
